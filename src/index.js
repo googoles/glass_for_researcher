@@ -28,7 +28,6 @@ const sessionRepository = require('./features/common/repositories/session');
 const modelStateService = require('./features/common/services/modelStateService');
 const featureBridge = require('./bridge/featureBridge');
 const windowBridge = require('./bridge/windowBridge');
-const researchService = require('./features/research/researchService');
 
 // Global variables
 const eventBridge = new EventEmitter();
@@ -48,105 +47,39 @@ let pendingDeepLinkUrl = null;
 
 function setupProtocolHandling() {
     // Protocol registration - must be done before app is ready
+    const protocolName = 'pickleglass';
+    
     try {
-        if (!app.isDefaultProtocolClient('pickleglass')) {
-            const success = app.setAsDefaultProtocolClient('pickleglass');
-            if (success) {
-                console.log('[Protocol] Successfully set as default protocol client for pickleglass://');
-            } else {
-                console.warn('[Protocol] Failed to set as default protocol client - this may affect deep linking');
-            }
-        } else {
-            console.log('[Protocol] Already registered as default protocol client for pickleglass://');
+        // Register the protocol with Electron
+        if (process.platform === 'win32' || process.platform === 'linux') {
+            app.setAsDefaultProtocolClient(protocolName);
+        } else if (process.platform === 'darwin') {
+            app.setAsDefaultProtocolClient(protocolName);
         }
+        
+        console.log(`[Protocol] Protocol '${protocolName}' registered successfully`);
     } catch (error) {
-        console.error('[Protocol] Error during protocol registration:', error);
+        console.error('[Protocol] Failed to register protocol:', error);
     }
 
-    // Handle protocol URLs on Windows/Linux
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        console.log('[Protocol] Second instance command line:', commandLine);
-        
-        focusMainWindow();
-        
-        let protocolUrl = null;
-        
-        // Search through all command line arguments for a valid protocol URL
-        for (const arg of commandLine) {
-            if (arg && typeof arg === 'string' && arg.startsWith('pickleglass://')) {
-                // Clean up the URL by removing problematic characters
-                const cleanUrl = arg.replace(/[\\₩]/g, '');
-                
-                // Additional validation for Windows
-                if (process.platform === 'win32') {
-                    // On Windows, ensure the URL doesn't contain file path indicators
-                    if (!cleanUrl.includes(':') || cleanUrl.indexOf('://') === cleanUrl.lastIndexOf(':')) {
-                        protocolUrl = cleanUrl;
-                        break;
-                    }
-                } else {
-                    protocolUrl = cleanUrl;
-                    break;
-                }
+    // Check if we were launched with a protocol URL
+    // For Windows and Linux, check process.argv
+    if (process.platform === 'win32' || process.platform === 'linux') {
+        for (let i = 1; i < process.argv.length; i++) {
+            const arg = process.argv[i];
+            if (arg && arg.startsWith(`${protocolName}://`)) {
+                console.log('[Protocol] Found protocol URL in process.argv:', arg);
+                pendingDeepLinkUrl = arg;
+                break;
             }
         }
-        
-        if (protocolUrl) {
-            console.log('[Protocol] Valid URL found from second instance:', protocolUrl);
-            handleCustomUrl(protocolUrl);
-        } else {
-            console.log('[Protocol] No valid protocol URL found in command line arguments');
-            console.log('[Protocol] Command line args:', commandLine);
-        }
-    });
-
-    // Handle protocol URLs on macOS
-    app.on('open-url', (event, url) => {
-        event.preventDefault();
-        console.log('[Protocol] Received URL via open-url:', url);
-        
-        if (!url || !url.startsWith('pickleglass://')) {
-            console.warn('[Protocol] Invalid URL format:', url);
-            return;
-        }
-
-        if (app.isReady()) {
-            handleCustomUrl(url);
-        } else {
-            pendingDeepLinkUrl = url;
-            console.log('[Protocol] App not ready, storing URL for later');
-        }
-    });
-}
-
-function focusMainWindow() {
-    const { windowPool } = require('./window/windowManager.js');
-    if (windowPool) {
-        const header = windowPool.get('header');
-        if (header && !header.isDestroyed()) {
-            if (header.isMinimized()) header.restore();
-            header.focus();
-            return true;
-        }
     }
     
-    // Fallback: focus any available window
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-        const mainWindow = windows[0];
-        if (!mainWindow.isDestroyed()) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.focus();
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-if (process.platform === 'win32') {
-    for (const arg of process.argv) {
-        if (arg && typeof arg === 'string' && arg.startsWith('pickleglass://')) {
+    // For macOS, the URL will come through 'open-url' event
+    // but we still check argv for consistency
+    if (process.platform === 'darwin') {
+        for (let i = 1; i < process.argv.length; i++) {
+            const arg = process.argv[i];
             // Clean up the URL by removing problematic characters (korean characters issue...)
             const cleanUrl = arg.replace(/[\\₩]/g, '');
             
@@ -199,11 +132,7 @@ app.whenReady().then(async () => {
         await modelStateService.initialize();
         //////// after_modelStateService ////////
 
-        // Initialize research service
-        await researchService.initialize();
-        console.log('>>> [index.js] Research service initialized successfully');
-
-        // Initialize activity service
+        // Initialize activity service (includes comprehensive activity tracking with AI)
         const activityService = require('./features/activity/activityService');
         await activityService.initialize();
         console.log('>>> [index.js] Activity service initialized successfully');
@@ -232,14 +161,7 @@ app.whenReady().then(async () => {
         // Create windows first
         const windows = createWindows();
         
-        // Initialize research tracking after windows are created
-        try {
-            console.log('[Research] Initializing research tracking...');
-            await researchIntegration.initializeResearch(windows);
-            console.log('[Research] Research tracking initialized successfully');
-        } catch (researchError) {
-            console.warn('[Research] Failed to initialize research tracking:', researchError.message);
-        }
+        console.log('[Activity] Activity tracking system ready - includes AI-powered screenshot analysis');
 
     } catch (err) {
         console.error('>>> [index.js] Database initialization failed - some features may not work', err);
@@ -281,7 +203,16 @@ app.on('before-quit', async (event) => {
         await listenService.closeSession();
         console.log('[Shutdown] Audio capture stopped');
         
-        // 2. End all active sessions (database operations) - with error handling
+        // 2. Stop activity tracking
+        try {
+            const activityService = require('./features/activity/activityService');
+            await activityService.stopActivityTracking();
+            console.log('[Shutdown] Activity tracking stopped');
+        } catch (activityError) {
+            console.warn('[Shutdown] Could not stop activity tracking:', activityError.message);
+        }
+        
+        // 3. End all active sessions (database operations) - with error handling
         try {
             await sessionRepository.endAllActiveSessions();
             console.log('[Shutdown] Active sessions ended');
@@ -289,7 +220,7 @@ app.on('before-quit', async (event) => {
             console.warn('[Shutdown] Could not end active sessions (database may be closed):', dbError.message);
         }
         
-        // 3. Shutdown Ollama service (potentially time-consuming)
+        // 4. Shutdown Ollama service (potentially time-consuming)
         console.log('[Shutdown] shutting down Ollama service...');
         const ollamaShutdownSuccess = await Promise.race([
             ollamaService.shutdown(false), // Graceful shutdown
@@ -299,322 +230,187 @@ app.on('before-quit', async (event) => {
         if (ollamaShutdownSuccess) {
             console.log('[Shutdown] Ollama service shut down gracefully');
         } else {
-            console.log('[Shutdown] Ollama shutdown timeout, forcing...');
-            // Force shutdown if graceful failed
-            try {
-                await ollamaService.shutdown(true);
-            } catch (forceShutdownError) {
-                console.warn('[Shutdown] Force shutdown also failed:', forceShutdownError.message);
-            }
+            console.log('[Shutdown] Ollama service shutdown timed out, forcing quit');
         }
         
-        // 4. Shutdown research tracking
-        try {
-            researchIntegration.shutdown();
-            console.log('[Shutdown] Research tracking shut down');
-        } catch (researchError) {
-            console.warn('[Shutdown] Error shutting down research tracking:', researchError.message);
-        }
-        
-        // 5. Close database connections (final cleanup)
-        try {
-            databaseInitializer.close();
-            console.log('[Shutdown] Database connections closed');
-        } catch (closeError) {
-            console.warn('[Shutdown] Error closing database:', closeError.message);
-        }
-        
-        console.log('[Shutdown] Graceful shutdown completed successfully');
+        console.log('[Shutdown] All services stopped. Allowing app to quit...');
         
     } catch (error) {
         console.error('[Shutdown] Error during graceful shutdown:', error);
-        // Continue with shutdown even if there were errors
     } finally {
-        // Actually quit the app now
-        console.log('[Shutdown] Exiting application...');
-        app.exit(0); // Use app.exit() instead of app.quit() to force quit
+        // Always quit after timeout, even if there are errors
+        setTimeout(() => {
+            console.log('[Shutdown] Force quitting after timeout');
+            app.quit();
+        }, 1000);
+    }
+});
+
+// Handle OAuth callback URL from OAuth providers (GitHub, Discord, etc)
+app.on('open-url', (event, url) => {
+    console.log('[Protocol] Received open-url event:', url);
+    event.preventDefault();
+
+    if (app.isReady()) {
+        handleCustomUrl(url);
+    } else {
+        pendingDeepLinkUrl = url;
+    }
+});
+
+// Handle protocol URL from second instance (Windows/Linux)
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('[Protocol] Second instance detected');
+    console.log('[Protocol] Command line args:', commandLine);
+    
+    // Focus existing window
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+        const mainWindow = windows[0];
+        if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+    }
+
+    // Look for protocol URL in command line arguments
+    for (let i = 0; i < commandLine.length; i++) {
+        const arg = commandLine[i];
+        if (arg && arg.includes('://')) {
+            console.log('[Protocol] Found protocol URL in second instance:', arg);
+            if (app.isReady()) {
+                handleCustomUrl(arg);
+            }
+            break;
+        }
+    }
+});
+
+function handleCustomUrl(url) {
+    console.log('[Protocol] Processing custom URL:', url);
+    
+    try {
+        const parsedUrl = new URL(url);
+        const host = parsedUrl.hostname;
+        const searchParams = parsedUrl.searchParams;
+        
+        console.log('[Protocol] URL host:', host);
+        console.log('[Protocol] URL params:', Object.fromEntries(searchParams));
+        
+        if (host === 'oauth') {
+            handleOAuthCallback(searchParams);
+        } else if (host === 'auth' || host === 'callback') {
+            // Handle Firebase auth callback
+            handleAuthCallback(parsedUrl);
+        } else {
+            console.log('[Protocol] Unknown protocol host:', host);
+        }
+    } catch (error) {
+        console.error('[Protocol] Error parsing custom URL:', error);
+    }
+}
+
+function handleOAuthCallback(searchParams) {
+    console.log('[OAuth] Processing OAuth callback');
+    
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    const error = searchParams.get('error');
+    
+    if (error) {
+        console.error('[OAuth] OAuth error:', error);
+        return;
+    }
+    
+    if (code && state) {
+        console.log('[OAuth] OAuth success - code and state received');
+        // Send to renderer processes
+        BrowserWindow.getAllWindows().forEach(win => {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('oauth-callback', { code, state, provider: 'unknown' });
+            }
+        });
+    }
+}
+
+function handleAuthCallback(parsedUrl) {
+    console.log('[Auth] Processing auth callback');
+    
+    // Extract Firebase auth parameters
+    const fragment = parsedUrl.hash.substring(1); // Remove the '#'
+    const params = new URLSearchParams(fragment);
+    
+    const accessToken = params.get('access_token');
+    const idToken = params.get('id_token');
+    
+    if (accessToken || idToken) {
+        console.log('[Auth] Firebase auth tokens received');
+        // Send to renderer processes
+        BrowserWindow.getAllWindows().forEach(win => {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('firebase-auth-callback', { 
+                    accessToken, 
+                    idToken,
+                    fragment: parsedUrl.hash
+                });
+            }
+        });
+    }
+}
+
+// Global handlers
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        app.quit();
     }
 });
 
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-        createWindows();
+        const windows = createWindows();
     }
 });
 
-function setupWebDataHandlers() {
-    const sessionRepository = require('./features/common/repositories/session');
-    const sttRepository = require('./features/listen/stt/repositories');
-    const summaryRepository = require('./features/listen/summary/repositories');
-    const askRepository = require('./features/ask/repositories');
-    const userRepository = require('./features/common/repositories/user');
-    const presetRepository = require('./features/common/repositories/preset');
-
-    const handleRequest = async (channel, responseChannel, payload) => {
-        let result;
-        // const currentUserId = authService.getCurrentUserId(); // No longer needed here
-        try {
-            switch (channel) {
-                // SESSION
-                case 'get-sessions':
-                    // Adapter injects UID
-                    result = await sessionRepository.getAllByUserId();
-                    break;
-                case 'get-session-details':
-                    const session = await sessionRepository.getById(payload);
-                    if (!session) {
-                        result = null;
-                        break;
-                    }
-                    const [transcripts, ai_messages, summary] = await Promise.all([
-                        sttRepository.getAllTranscriptsBySessionId(payload),
-                        askRepository.getAllAiMessagesBySessionId(payload),
-                        summaryRepository.getSummaryBySessionId(payload)
-                    ]);
-                    result = { session, transcripts, ai_messages, summary };
-                    break;
-                case 'delete-session':
-                    result = await sessionRepository.deleteWithRelatedData(payload);
-                    break;
-                case 'create-session':
-                    // Adapter injects UID
-                    const id = await sessionRepository.create('ask');
-                    if (payload && payload.title) {
-                        await sessionRepository.updateTitle(id, payload.title);
-                    }
-                    result = { id };
-                    break;
-                
-                // USER
-                case 'get-user-profile':
-                    // Adapter injects UID
-                    result = await userRepository.getById();
-                    break;
-                case 'update-user-profile':
-                     // Adapter injects UID
-                    result = await userRepository.update(payload);
-                    break;
-                case 'find-or-create-user':
-                    result = await userRepository.findOrCreate(payload);
-                    break;
-                case 'save-api-key':
-                    // Use ModelStateService as the single source of truth for API key management
-                    result = await modelStateService.setApiKey(payload.provider, payload.apiKey);
-                    break;
-                case 'check-api-key-status':
-                    // Use ModelStateService to check API key status
-                    const hasApiKey = await modelStateService.hasValidApiKey();
-                    result = { hasApiKey };
-                    break;
-                case 'delete-account':
-                    // Adapter injects UID
-                    result = await userRepository.deleteById();
-                    break;
-
-                // PRESET
-                case 'get-presets':
-                    // Adapter injects UID
-                    result = await presetRepository.getPresets();
-                    break;
-                case 'create-preset':
-                    // Adapter injects UID
-                    result = await presetRepository.create(payload);
-                    settingsService.notifyPresetUpdate('created', result.id, payload.title);
-                    break;
-                case 'update-preset':
-                    // Adapter injects UID
-                    result = await presetRepository.update(payload.id, payload.data);
-                    settingsService.notifyPresetUpdate('updated', payload.id, payload.data.title);
-                    break;
-                case 'delete-preset':
-                    // Adapter injects UID
-                    result = await presetRepository.delete(payload);
-                    settingsService.notifyPresetUpdate('deleted', payload);
-                    break;
-                
-                // BATCH
-                case 'get-batch-data':
-                    const includes = payload ? payload.split(',').map(item => item.trim()) : ['profile', 'presets', 'sessions'];
-                    const promises = {};
-            
-                    if (includes.includes('profile')) {
-                        // Adapter injects UID
-                        promises.profile = userRepository.getById();
-                    }
-                    if (includes.includes('presets')) {
-                        // Adapter injects UID
-                        promises.presets = presetRepository.getPresets();
-                    }
-                    if (includes.includes('sessions')) {
-                        // Adapter injects UID
-                        promises.sessions = sessionRepository.getAllByUserId();
-                    }
-                    
-                    const batchResult = {};
-                    const promiseResults = await Promise.all(Object.values(promises));
-                    Object.keys(promises).forEach((key, index) => {
-                        batchResult[key] = promiseResults[index];
-                    });
-
-                    result = batchResult;
-                    break;
-
-                default:
-                    throw new Error(`Unknown web data channel: ${channel}`);
-            }
-            eventBridge.emit(responseChannel, { success: true, data: result });
-        } catch (error) {
-            console.error(`Error handling web data request for ${channel}:`, error);
-            eventBridge.emit(responseChannel, { success: false, error: error.message });
-        }
-    };
-    
-    eventBridge.on('web-data-request', handleRequest);
-}
-
-async function handleCustomUrl(url) {
-    try {
-        console.log('[Custom URL] Processing URL:', url);
-        
-        // Validate and clean URL
-        if (!url || typeof url !== 'string' || !url.startsWith('pickleglass://')) {
-            console.error('[Custom URL] Invalid URL format:', url);
-            return;
-        }
-        
-        // Clean up URL by removing problematic characters
-        const cleanUrl = url.replace(/[\\₩]/g, '');
-        
-        // Additional validation
-        if (cleanUrl !== url) {
-            console.log('[Custom URL] Cleaned URL from:', url, 'to:', cleanUrl);
-            url = cleanUrl;
-        }
-        
-        const urlObj = new URL(url);
-        const action = urlObj.hostname;
-        const params = Object.fromEntries(urlObj.searchParams);
-        
-        console.log('[Custom URL] Action:', action, 'Params:', params);
-
-        switch (action) {
-            case 'login':
-            case 'auth-success':
-                await handleFirebaseAuthCallback(params);
-                break;
-            case 'personalize':
-                handlePersonalizeFromUrl(params);
-                break;
-            default:
-                const { windowPool } = require('./window/windowManager.js');
-                const header = windowPool.get('header');
-                if (header) {
-                    if (header.isMinimized()) header.restore();
-                    header.focus();
-                    
-                    const targetUrl = `http://localhost:${WEB_PORT}/${action}`;
-                    console.log(`[Custom URL] Navigating webview to: ${targetUrl}`);
-                    header.webContents.loadURL(targetUrl);
-                }
-        }
-
-    } catch (error) {
-        console.error('[Custom URL] Error parsing URL:', error);
-    }
-}
-
-async function handleFirebaseAuthCallback(params) {
-    const userRepository = require('./features/common/repositories/user');
-    const { token: idToken } = params;
-
-    if (!idToken) {
-        console.error('[Auth] Firebase auth callback is missing ID token.');
-        // No need to send IPC, the UI won't transition without a successful auth state change.
+// Auto updater
+function initAutoUpdater() {
+    if (process.env.NODE_ENV === 'development') {
+        console.log('[AutoUpdater] Skipping auto-updater in development mode');
         return;
     }
 
-    console.log('[Auth] Received ID token from deep link, exchanging for custom token...');
+    autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        console.log('[AutoUpdater] Failed to check for updates:', err.message);
+    });
 
-    try {
-        const functionUrl = 'https://us-west1-pickle-3651a.cloudfunctions.net/pickleGlassAuthCallback';
-        const response = await fetch(functionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: idToken })
-        });
+    autoUpdater.on('checking-for-update', () => {
+        console.log('[AutoUpdater] Checking for update...');
+    });
 
-        const data = await response.json();
+    autoUpdater.on('update-available', (info) => {
+        console.log('[AutoUpdater] Update available:', info.version);
+    });
 
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Failed to exchange token.');
-        }
+    autoUpdater.on('update-not-available', (info) => {
+        console.log('[AutoUpdater] Update not available');
+    });
 
-        const { customToken, user } = data;
-        console.log('[Auth] Successfully received custom token for user:', user.uid);
+    autoUpdater.on('error', (err) => {
+        console.log('[AutoUpdater] Auto updater error:', err.message);
+    });
 
-        const firebaseUser = {
-            uid: user.uid,
-            email: user.email || 'no-email@example.com',
-            displayName: user.name || 'User',
-            photoURL: user.picture
-        };
+    autoUpdater.on('download-progress', (progressObj) => {
+        const logMessage = `[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
+        console.log(logMessage);
+    });
 
-        // 1. Sync user data to local DB
-        userRepository.findOrCreate(firebaseUser);
-        console.log('[Auth] User data synced with local DB.');
-
-        // 2. Sign in using the authService in the main process
-        await authService.signInWithCustomToken(customToken);
-        console.log('[Auth] Main process sign-in initiated. Waiting for onAuthStateChanged...');
-
-        // 3. Focus the app window
-        const { windowPool } = require('./window/windowManager.js');
-        const header = windowPool.get('header');
-        if (header) {
-            if (header.isMinimized()) header.restore();
-            header.focus();
-        } else {
-            console.error('[Auth] Header window not found after auth callback.');
-        }
-        
-    } catch (error) {
-        console.error('[Auth] Error during custom token exchange or sign-in:', error);
-        // The UI will not change, and the user can try again.
-        // Optionally, send a generic error event to the renderer.
-        const { windowPool } = require('./window/windowManager.js');
-        const header = windowPool.get('header');
-        if (header) {
-            header.webContents.send('auth-failed', { message: error.message });
-        }
-    }
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('[AutoUpdater] Update downloaded:', info.version);
+        // Note: We don't auto-restart, let user control when to restart
+    });
 }
 
-function handlePersonalizeFromUrl(params) {
-    console.log('[Custom URL] Personalize params:', params);
-    
-    const { windowPool } = require('./window/windowManager.js');
-    const header = windowPool.get('header');
-    
-    if (header) {
-        if (header.isMinimized()) header.restore();
-        header.focus();
-        
-        const personalizeUrl = `http://localhost:${WEB_PORT}/settings`;
-        console.log(`[Custom URL] Navigating to personalize page: ${personalizeUrl}`);
-        header.webContents.loadURL(personalizeUrl);
-        
-        BrowserWindow.getAllWindows().forEach(win => {
-            win.webContents.send('enter-personalize-mode', {
-                message: 'Personalization mode activated',
-                params: params
-            });
-        });
-    } else {
-        console.error('[Custom URL] Header window not found for personalize');
-    }
-}
-
-
+// Web server
 async function startWebStack() {
   console.log('NODE_ENV =', process.env.NODE_ENV); 
   const isDev = !app.isPackaged;
@@ -670,7 +466,7 @@ async function startWebStack() {
     timestamp: Date.now()
   };
   
-  // 쓰기 가능한 임시 폴더에 런타임 설정 파일 생성
+  // Create runtime config in temp folder
   const tempDir = app.getPath('temp');
   const configPath = path.join(tempDir, 'runtime-config.json');
   fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2));
@@ -678,79 +474,173 @@ async function startWebStack() {
 
   const frontSrv = express();
   
-  // 프론트엔드에서 /runtime-config.json을 요청하면 임시 폴더의 파일을 제공
+  // Serve runtime config
   frontSrv.get('/runtime-config.json', (req, res) => {
     res.sendFile(configPath);
   });
 
   frontSrv.use((req, res, next) => {
     if (req.path.indexOf('.') === -1 && req.path !== '/') {
-      const htmlPath = path.join(staticDir, req.path + '.html');
-      if (fs.existsSync(htmlPath)) {
-        return res.sendFile(htmlPath);
-      }
+      req.url = req.path + '.html';
     }
     next();
   });
-  
+
   frontSrv.use(express.static(staticDir));
-  
-  const frontendServer = await new Promise((resolve, reject) => {
-    const server = frontSrv.listen(frontendPort, '127.0.0.1', () => resolve(server));
-    server.on('error', reject);
-    app.once('before-quit', () => server.close());
+
+  // Backend API server
+  const apiServer = nodeApi.listen(apiPort, (err) => {
+    if (err) {
+      console.error(`Failed to start API server:`, err);
+      app.quit();
+      return;
+    }
+    console.log(`🚀 Backend API running on http://localhost:${apiPort}`);
   });
 
-  console.log(`✅ Frontend server started on http://localhost:${frontendPort}`);
-
-  const apiSrv = express();
-  apiSrv.use(nodeApi);
-
-  const apiServer = await new Promise((resolve, reject) => {
-    const server = apiSrv.listen(apiPort, '127.0.0.1', () => resolve(server));
-    server.on('error', reject);
-    app.once('before-quit', () => server.close());
+  // Frontend static server
+  const frontendServer = frontSrv.listen(frontendPort, (err) => {
+    if (err) {
+      console.error(`Failed to start frontend server:`, err);
+      app.quit();
+      return;
+    }
+    console.log(`🌐 Frontend running on http://localhost:${frontendPort}`);
   });
 
-  console.log(`✅ API server started on http://localhost:${apiPort}`);
-
-  console.log(`🚀 All services ready:
-   Frontend: http://localhost:${frontendPort}
-   API:      http://localhost:${apiPort}`);
-
+  // Return the frontend port for the app to use
   return frontendPort;
 }
 
-// Auto-update initialization
-async function initAutoUpdater() {
-    if (process.env.NODE_ENV === 'development') {
-        console.log('Development environment, skipping auto-updater.');
-        return;
-    }
+function setupWebDataHandlers() {
+    // Event bridge handlers for web communication
+    eventBridge.invoke = async (channel, data) => {
+        try {
+            console.log(`[EventBridge] Invoking ${channel} with data:`, data);
+            
+            // Handle different channel types
+            if (channel.startsWith('research:') || channel.startsWith('activity:')) {
+                // Delegate to the appropriate service via featureBridge
+                return await handleServiceInvocation(channel, data);
+            }
+            
+            console.warn(`[EventBridge] Unknown channel: ${channel}`);
+            return { error: 'Unknown channel' };
+        } catch (error) {
+            console.error(`[EventBridge] Error invoking ${channel}:`, error);
+            return { error: error.message };
+        }
+    };
+}
 
+async function handleServiceInvocation(channel, data) {
+    // Map web API calls to IPC handlers
     try {
-        await autoUpdater.checkForUpdates();
-        autoUpdater.on('update-available', () => {
-            console.log('Update available!');
-            autoUpdater.downloadUpdate();
-        });
-        autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName, date, url) => {
-            console.log('Update downloaded:', releaseNotes, releaseName, date, url);
-            dialog.showMessageBox({
-                type: 'info',
-                title: 'Application Update',
-                message: `A new version of PickleGlass (${releaseName}) has been downloaded. It will be installed the next time you launch the application.`,
-                buttons: ['Restart', 'Later']
-            }).then(response => {
-                if (response.response === 0) {
-                    autoUpdater.quitAndInstall();
+        const activityService = require('./features/activity/activityService');
+        
+        switch (channel) {
+            case 'research:get-status':
+            case 'activity:get-tracking-status':
+                return await activityService.getTrackingStatus();
+                
+            case 'research:start-tracking':
+            case 'activity:start-tracking':
+                return await activityService.startActivityTracking();
+                
+            case 'research:stop-tracking':
+            case 'activity:stop-tracking':
+                return await activityService.stopActivityTracking();
+                
+            case 'research:manual-capture-analyze':
+                const screenshot = await activityService.captureScreenshot();
+                if (!screenshot.success) {
+                    return { error: screenshot.error };
                 }
-            });
-        });
-        autoUpdater.on('error', (err) => {
-            console.error('Error in auto-updater:', err);
-        });
-    } catch (err) {
-        console.error('Error initializing auto-updater:', err);
+                const analysis = await activityService.analyzeScreenshot(screenshot.base64);
+                return {
+                    success: true,
+                    analysis,
+                    timestamp: Date.now(),
+                    type: 'manual'
+                };
+                
+            case 'research:get-current-productivity-score':
+                const status = await activityService.getTrackingStatus();
+                if (status.lastAnalysis) {
+                    return {
+                        score: getProductivityScore(status.lastAnalysis),
+                        timestamp: status.lastAnalysis.timestamp,
+                        confidence: status.lastAnalysis.confidence || 85,
+                        analysis: status.lastAnalysis.activity_title || status.lastAnalysis.category,
+                        category: status.lastAnalysis.category
+                    };
+                }
+                return { score: null, message: 'AI analysis not available' };
+                
+            case 'research:generate-insights':
+                const insights = await activityService.generateInsights(data?.timeframe || 'week');
+                if (!insights) {
+                    return {
+                        insights: [],
+                        recommendations: [],
+                        trends: { productivity: 'stable', focus: 'stable' }
+                    };
+                }
+                return {
+                    insights: insights.insights.map(insight => ({
+                        type: 'productivity',
+                        title: insight,
+                        description: insight,
+                        importance: 'medium'
+                    })),
+                    recommendations: insights.recommendations.map(rec => ({
+                        title: rec,
+                        description: rec,
+                        category: 'general'
+                    })),
+                    trends: {
+                        productivity: insights.productivity_ratio > 70 ? 'improving' : 
+                                     insights.productivity_ratio < 40 ? 'declining' : 'stable',
+                        focus: 'stable'
+                    }
+                };
+                
+            case 'research:get-ai-status':
+                const modelInfo = await modelStateService.getCurrentModelInfo('llm');
+                return {
+                    available: modelInfo && modelInfo.provider === 'gemini' && modelInfo.apiKey,
+                    provider: 'gemini',
+                    status: modelInfo && modelInfo.apiKey ? 'ready' : 'not_configured',
+                    capabilities: [
+                        'screenshot_analysis',
+                        'activity_categorization', 
+                        'productivity_scoring',
+                        'insights_generation'
+                    ]
+                };
+                
+            default:
+                console.warn(`[ServiceInvocation] Unknown channel: ${channel}`);
+                return { error: 'Unknown channel' };
+        }
+    } catch (error) {
+        console.error(`[ServiceInvocation] Error handling ${channel}:`, error);
+        return { error: error.message };
+    }
+}
+
+// Helper function to convert activity analysis to productivity score
+function getProductivityScore(analysis) {
+    if (!analysis || !analysis.details) return 5;
+    
+    const productivity = analysis.details.productivity_indicator;
+    const category = analysis.category?.toLowerCase();
+    
+    if (productivity === 'high' || ['focus', 'creative', 'research'].includes(category)) {
+        return Math.floor(Math.random() * 3) + 8; // 8-10
+    } else if (productivity === 'low' || category === 'break') {
+        return Math.floor(Math.random() * 3) + 1; // 1-3
+    } else {
+        return Math.floor(Math.random() * 3) + 5; // 5-7
     }
 }

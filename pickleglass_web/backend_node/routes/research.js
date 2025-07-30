@@ -99,4 +99,80 @@ router.get('/pdfs', async (req, res) => {
     }
 });
 
+// AI Analysis endpoints
+
+router.get('/analysis/current-score', async (req, res) => {
+    try {
+        const score = await req.bridge.invoke('research:get-current-productivity-score');
+        res.json(score);
+    } catch (error) {
+        console.error('Error getting current productivity score:', error);
+        res.status(500).json({ error: 'Failed to get current productivity score' });
+    }
+});
+
+router.get('/analysis/history', async (req, res) => {
+    try {
+        const { limit = 50 } = req.query;
+        const history = await req.bridge.invoke('research:get-analysis-history', { limit: parseInt(limit) });
+        res.json(history);
+    } catch (error) {
+        console.error('Error getting analysis history:', error);
+        res.status(500).json({ error: 'Failed to get analysis history' });
+    }
+});
+
+router.get('/insights/:timeframe', async (req, res) => {
+    try {
+        const { timeframe } = req.params;
+        const insights = await req.bridge.invoke('research:generate-insights', { timeframe });
+        res.json(insights);
+    } catch (error) {
+        console.error('Error generating insights:', error);
+        res.status(500).json({ error: 'Failed to generate insights' });
+    }
+});
+
+router.get('/analysis/productivity-stats/:timeframe', async (req, res) => {
+    try {
+        const { timeframe } = req.params;
+        const stats = await req.bridge.invoke('research:get-productivity-stats', { timeframe });
+        res.json(stats);
+    } catch (error) {
+        console.error('Error getting productivity stats:', error);
+        res.status(500).json({ error: 'Failed to get productivity stats' });
+    }
+});
+
+router.get('/analysis/app-usage/:appName', async (req, res) => {
+    try {
+        const { appName } = req.params;
+        const analysis = await req.bridge.invoke('research:analyze-app-usage', { appName });
+        res.json(analysis);
+    } catch (error) {
+        console.error('Error analyzing app usage:', error);
+        res.status(500).json({ error: 'Failed to analyze app usage' });
+    }
+});
+
+router.post('/analysis/manual-capture', async (req, res) => {
+    try {
+        const result = await req.bridge.invoke('research:manual-capture-analyze');
+        res.json(result);
+    } catch (error) {
+        console.error('Error performing manual analysis:', error);
+        res.status(500).json({ error: 'Failed to perform manual analysis' });
+    }
+});
+
+router.get('/ai-status', async (req, res) => {
+    try {
+        const status = await req.bridge.invoke('research:get-ai-status');
+        res.json(status);
+    } catch (error) {
+        console.error('Error getting AI status:', error);
+        res.status(500).json({ error: 'Failed to get AI status' });
+    }
+});
+
 module.exports = router;

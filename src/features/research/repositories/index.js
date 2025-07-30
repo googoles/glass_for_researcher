@@ -44,6 +44,37 @@ const researchRepositoryAdapter = {
     getDailyStats: (date) => {
         const uid = authService.getCurrentUserId();
         return getBaseRepository().getDailyStats(date, uid);
+    },
+
+    // AI Analysis methods
+    createAnalysis: (analysisData) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().createAnalysis({ uid, ...analysisData });
+    },
+
+    getSessionAnalysis: (sessionId) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getSessionAnalysis(sessionId, uid);
+    },
+
+    getRecentAnalysis: (hours) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getRecentAnalysis(hours, uid);
+    },
+
+    getProductivityStats: (timeframe) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getProductivityStats(timeframe, uid);
+    },
+
+    storeInsights: (insightData) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().storeInsights({ uid, ...insightData });
+    },
+
+    getCachedInsights: (insightType, timeframe) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getCachedInsights(insightType, timeframe, uid);
     }
 };
 

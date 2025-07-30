@@ -49,6 +49,39 @@ const activityRepositoryAdapter = {
     saveGoals: (goals) => {
         const uid = authService.getCurrentUserId();
         return getBaseRepository().saveGoals(goals, uid);
+    },
+
+    // Settings methods
+    getSettings: () => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getSettings(uid);
+    },
+
+    saveSettings: (settings) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().saveSettings(settings, uid);
+    },
+
+    // Capture data methods
+    storeCaptureData: (captureData) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().storeCaptureData(captureData, uid);
+    },
+
+    getCaptureData: (limit, offset) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getCaptureData(uid, limit, offset);
+    },
+
+    // Analytics methods
+    getActivityStats: (startDate, endDate) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getActivityStats(uid, startDate, endDate);
+    },
+
+    getProductivityTrends: (days) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getProductivityTrends(uid, days);
     }
 };
 

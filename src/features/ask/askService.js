@@ -418,6 +418,9 @@ class AskService {
                  try {
                     await askRepository.addAiMessage({ sessionId, role: 'assistant', content: fullResponse });
                     console.log(`[AskService] DB: Saved partial or full assistant response to session ${sessionId} after stream ended.`);
+                    
+                    // Create activity entry for productivity tracking
+                    await this._createActivityFromCapture(fullResponse);
                 } catch(dbError) {
                     console.error("[AskService] DB: Failed to save assistant response after stream ended:", dbError);
                 }
@@ -441,6 +444,88 @@ class AskService {
             errorMessage.includes('invalid') ||
             errorMessage.includes('not supported')
         );
+    }
+
+    /**
+     * Create activity entry from captured screenshot analysis
+     * @private
+     */
+    async _createActivityFromCapture(aiResponse) {
+        try {
+            // Import activity service lazily to avoid circular dependency
+            const activityService = require('../activity/activityService');
+            
+            // Parse AI response to extract activity details
+            const activityData = this._parseActivityFromAIResponse(aiResponse);
+            
+            if (activityData) {
+                await activityService.createActivity(activityData);
+                console.log('[AskService] Created activity entry from capture analysis');
+            }
+        } catch (error) {
+            console.error('[AskService] Failed to create activity from capture:', error);
+            // Don't throw - this is a non-critical feature
+        }
+    }
+
+    /**
+     * Parse AI response to extract activity information
+     * @private
+     */
+    _parseActivityFromAIResponse(aiResponse) {
+        try {
+            // Extract activity type based on content
+            let category = 'other';
+            let title = 'Manual Capture Activity';
+            
+            const lowerResponse = aiResponse.toLowerCase();
+            
+            // Detect category based on keywords
+            if (lowerResponse.includes('code') || lowerResponse.includes('programming') || lowerResponse.includes('function') || lowerResponse.includes('class')) {
+                category = 'coding';
+                title = 'Coding Activity';
+            } else if (lowerResponse.includes('meeting') || lowerResponse.includes('call') || lowerResponse.includes('discussion')) {
+                category = 'meeting';
+                title = 'Meeting Activity';
+            } else if (lowerResponse.includes('research') || lowerResponse.includes('reading') || lowerResponse.includes('article')) {
+                category = 'research';
+                title = 'Research Activity';
+            } else if (lowerResponse.includes('design') || lowerResponse.includes('ui') || lowerResponse.includes('mockup')) {
+                category = 'design';
+                title = 'Design Activity';
+            } else if (lowerResponse.includes('document') || lowerResponse.includes('writing') || lowerResponse.includes('report')) {
+                category = 'documentation';
+                title = 'Documentation Activity';
+            } else if (lowerResponse.includes('test') || lowerResponse.includes('debug') || lowerResponse.includes('bug')) {
+                category = 'testing';
+                title = 'Testing Activity';
+            }
+            
+            // Try to extract a more specific title from the first sentence
+            const firstSentence = aiResponse.split('.')[0];
+            if (firstSentence && firstSentence.length < 100) {
+                title = firstSentence.trim();
+            }
+            
+            const now = new Date();
+            
+            return {
+                title: title,
+                category: category,
+                start_time: now.toISOString(),
+                end_time: now.toISOString(),
+                duration_ms: 0, // Single capture, no duration
+                status: 'completed',
+                metadata: {
+                    source: 'manual_capture',
+                    ai_summary: aiResponse.substring(0, 500), // Store first 500 chars of AI response
+                    captured_at: now.toISOString()
+                }
+            };
+        } catch (error) {
+            console.error('[AskService] Failed to parse activity from AI response:', error);
+            return null;
+        }
     }
 
 }

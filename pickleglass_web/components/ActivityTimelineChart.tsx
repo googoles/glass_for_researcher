@@ -66,22 +66,8 @@ export default function ActivityTimelineChart({
     try {
       setLoading(true);
       
-      const params = new URLSearchParams({
-        date: selectedDate,
-        ...(projectId && { project_id: projectId })
-      });
-      
-      const response = await fetch(`/api/activity/timeline?${params}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch timeline data');
-      }
-      
-      const data = await response.json();
-      setTimelineData(data);
-    } catch (error) {
-      console.error('Error fetching timeline data:', error);
-      // Mock data for development
+      // For now, use mock data since the backend integration is not complete
+      // TODO: Replace with actual API call when backend is ready
       setTimelineData({
         activities: generateMockActivities(),
         totalTime: 28800000, // 8 hours
@@ -94,6 +80,8 @@ export default function ActivityTimelineChart({
           design: 1200000 // 20 minutes
         }
       });
+    } catch (error) {
+      console.error('Error fetching timeline data:', error);
     } finally {
       setLoading(false);
     }
@@ -181,7 +169,7 @@ export default function ActivityTimelineChart({
 
   if (loading) {
     return (
-      <div className={`bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-6 ${className}`}>
+      <div className={`bg-white border-2 border-gray-100 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all ${className}`}>
         <div className="animate-pulse">
           <div className="h-6 bg-white/20 rounded w-48 mb-4"></div>
           <div className="space-y-3">
@@ -199,8 +187,8 @@ export default function ActivityTimelineChart({
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-white">Activity Timeline</h2>
-          <p className="text-white/70 text-sm">
+          <h2 className="text-xl font-bold text-gray-900">Activity Timeline</h2>
+          <p className="text-gray-600 text-sm">
             {new Date(selectedDate).toLocaleDateString()} • {formatDuration(timelineData.totalTime)} total
           </p>
         </div>
@@ -211,8 +199,8 @@ export default function ActivityTimelineChart({
             onClick={() => setSelectedCategory(null)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
               !selectedCategory 
-                ? 'bg-white/20 text-white' 
-                : 'bg-white/5 text-white/60 hover:bg-white/10'
+                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             All
@@ -239,12 +227,12 @@ export default function ActivityTimelineChart({
 
       {/* Timeline Header */}
       <div className="mb-4">
-        <div className="flex justify-between text-xs text-white/60 mb-2">
+        <div className="flex justify-between text-xs text-gray-500 mb-2">
           <span>8:00 AM</span>
           <span>12:00 PM</span>
           <span>6:00 PM</span>
         </div>
-        <div className="h-px bg-white/20"></div>
+        <div className="h-px bg-gray-300"></div>
       </div>
 
       {/* Timeline */}
@@ -256,17 +244,25 @@ export default function ActivityTimelineChart({
           return (
             <div key={activity.id} className="relative">
               {/* Timeline Background */}
-              <div className="h-12 bg-white/5 rounded-lg relative overflow-hidden">
+              <div className="h-14 bg-gray-50 rounded-xl relative overflow-hidden border border-gray-200">
                 {/* Activity Bar */}
                 <div
-                  className={`absolute top-0 h-full rounded-lg bg-gradient-to-r from-white/20 to-white/30 border border-white/30 backdrop-blur-sm`}
+                  className={`absolute top-0 h-full rounded-xl shadow-sm bg-gradient-to-r ${
+                    activity.category === 'coding' ? 'from-blue-400 to-blue-500' :
+                    activity.category === 'research' ? 'from-green-400 to-green-500' :
+                    activity.category === 'meeting' ? 'from-purple-400 to-purple-500' :
+                    activity.category === 'design' ? 'from-pink-400 to-pink-500' :
+                    activity.category === 'documentation' ? 'from-orange-400 to-orange-500' :
+                    activity.category === 'testing' ? 'from-red-400 to-red-500' :
+                    'from-gray-400 to-gray-500'
+                  }`}
                   style={position}
                 >
                   <div className="flex items-center h-full px-3">
-                    <IconComponent className="w-4 h-4 text-white mr-2 flex-shrink-0" />
+                    <IconComponent className="w-4 h-4 text-white mr-2 flex-shrink-0 drop-shadow" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-white text-sm font-medium truncate">{activity.title}</p>
-                      <p className="text-white/60 text-xs">
+                      <p className="text-white text-sm font-semibold truncate drop-shadow">{activity.title}</p>
+                      <p className="text-white/80 text-xs drop-shadow">
                         {formatTime(activity.start_time)} - {formatTime(activity.end_time!)} 
                         <span className="ml-1">({formatDuration(activity.duration_ms)})</span>
                       </p>
@@ -286,13 +282,13 @@ export default function ActivityTimelineChart({
           const percentage = (time / timelineData.totalTime) * 100;
           
           return (
-            <div key={category} className="bg-white/5 rounded-lg p-3 border border-white/10">
+            <div key={category} className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border-2 border-gray-100 hover:shadow-md transition-all">
               <div className="flex items-center mb-2">
-                <IconComponent className="w-4 h-4 text-white mr-2" />
-                <span className="text-white text-sm font-medium capitalize">{category}</span>
+                <IconComponent className="w-5 h-5 text-gray-700 mr-2" />
+                <span className="text-gray-900 text-sm font-semibold capitalize">{category}</span>
               </div>
-              <div className="text-white/90 text-lg font-bold">{formatDuration(time)}</div>
-              <div className="text-white/60 text-xs">{percentage.toFixed(1)}% of day</div>
+              <div className="text-gray-900 text-xl font-bold">{formatDuration(time)}</div>
+              <div className="text-gray-500 text-xs font-medium">{percentage.toFixed(1)}% of day</div>
             </div>
           );
         })}

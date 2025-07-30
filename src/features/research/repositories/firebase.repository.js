@@ -151,6 +151,198 @@ class ResearchFirebaseRepository {
       ...eventDoc
     };
   }
+
+  /**
+   * Store AI analysis results
+   */
+  async createAnalysis(analysisData) {
+    const db = firebaseClient.getDb();
+    
+    const analysisDoc = {
+      session_id: analysisData.session_id,
+      uid: analysisData.uid,
+      timestamp: analysisData.timestamp,
+      productivity_score: analysisData.productivity_score || 0,
+      activity_type: analysisData.activity_type || 'unknown',
+      applications: JSON.parse(analysisData.applications || '[]'),
+      focus_quality: analysisData.focus_quality || 'unknown',
+      raw_analysis: analysisData.raw_analysis || '',
+      confidence_score: analysisData.confidence_score || 0,
+      categories: JSON.parse(analysisData.categories || '[]'),
+      tags: JSON.parse(analysisData.tags || '[]'),
+      created_at: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('research_analysis').add(analysisDoc);
+    
+    return {
+      id: docRef.id,
+      ...analysisDoc
+    };
+  }
+
+  /**
+   * Get analysis data for a session
+   */
+  async getSessionAnalysis(sessionId, uid) {
+    const db = firebaseClient.getDb();
+    
+    const snapshot = await db.collection('research_analysis')
+      .where('session_id', '==', sessionId)
+      .where('uid', '==', uid)
+      .orderBy('timestamp', 'asc')
+      .get();
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  /**
+   * Get recent analysis data for insights
+   */
+  async getRecentAnalysis(hours = 24, uid) {
+    const db = firebaseClient.getDb();
+    
+    const cutoffTime = new Date(Date.now() - (hours * 60 * 60 * 1000)).toISOString();
+    
+    const snapshot = await db.collection('research_analysis')
+      .where('uid', '==', uid)
+      .where('timestamp', '>=', cutoffTime)
+      .orderBy('timestamp', 'desc')
+      .get();
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  /**
+   * Get productivity statistics (simplified for Firebase)
+   */
+  async getProductivityStats(timeframe, uid) {
+    const db = firebaseClient.getDb();
+    
+    let cutoffHours;
+    switch (timeframe) {
+      case '1h': cutoffHours = 1; break;
+      case '24h': cutoffHours = 24; break;
+      case '7d': cutoffHours = 7 * 24; break;
+      default: cutoffHours = 24;
+    }
+    
+    const cutoffTime = new Date(Date.now() - (cutoffHours * 60 * 60 * 1000)).toISOString();
+    
+    const snapshot = await db.collection('research_analysis')
+      .where('uid', '==', uid)
+      .where('timestamp', '>=', cutoffTime)
+      .get();
+
+    const analyses = snapshot.docs.map(doc => doc.data());
+    
+    if (analyses.length === 0) {
+      return {
+        total_analyses: 0,
+        avg_productivity: 0,
+        max_productivity: 0,
+        min_productivity: 0,
+        avg_confidence: 0
+      };
+    }
+
+    const productivityScores = analyses.map(a => a.productivity_score || 0);
+    const confidenceScores = analyses.map(a => a.confidence_score || 0);
+    
+    return {
+      total_analyses: analyses.length,
+      avg_productivity: productivityScores.reduce((sum, score) => sum + score, 0) / productivityScores.length,
+      max_productivity: Math.max(...productivityScores),
+      min_productivity: Math.min(...productivityScores),
+      avg_confidence: confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length
+    };
+  }
+
+  /**
+   * Store generated insights
+   */
+  async storeInsights(insightData) {
+    const db = firebaseClient.getDb();
+    
+    // Calculate expiration time (insights valid for 4 hours)
+    const expiresAt = new Date(Date.now() + (4 * 60 * 60 * 1000)).toISOString();
+    
+    const insightDoc = {
+      uid: insightData.uid,
+      insight_type: insightData.insight_type || 'general',
+      timeframe: insightData.timeframe || '24h',
+      data_points: insightData.data_points || 0,
+      insights_data: insightData.insights_data,
+      generated_at: new Date().toISOString(),
+      expires_at: expiresAt
+    };
+
+    const docRef = await db.collection('research_insights').add(insightDoc);
+    
+    return {
+      id: docRef.id,
+      ...insightDoc
+    };
+  }
+
+  /**
+   * Get cached insights if still valid
+   */
+  async getCachedInsights(insightType, timeframe, uid) {
+    const db = firebaseClient.getDb();
+    
+    const now = new Date().toISOString();
+    
+    const snapshot = await db.collection('research_insights')
+      .where('uid', '==', uid)
+      .where('insight_type', '==', insightType)
+      .where('timeframe', '==', timeframe)
+      .where('expires_at', '>', now)
+      .orderBy('expires_at', 'desc')
+      .orderBy('generated_at', 'desc')
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        ...doc.data()
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Clean expired insights (called periodically)
+   */
+  async cleanExpiredInsights() {
+    const db = firebaseClient.getDb();
+    
+    const now = new Date().toISOString();
+    
+    const expiredSnapshot = await db.collection('research_insights')
+      .where('expires_at', '<=', now)
+      .limit(100) // Process in batches
+      .get();
+
+    const batch = db.batch();
+    expiredSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    if (!expiredSnapshot.empty) {
+      await batch.commit();
+      console.log(`[Research Firebase Repository] Cleaned ${expiredSnapshot.docs.length} expired insights`);
+    }
+  }
 }
 
 module.exports = new ResearchFirebaseRepository();
