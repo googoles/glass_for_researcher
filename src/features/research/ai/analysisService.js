@@ -5,6 +5,7 @@
 
 const { createLLM } = require('../../common/ai/factory');
 const ActivityPrompts = require('./activityPrompts');
+const PrivacyAwarePrompts = require('./privacyAwarePrompts');
 const PatternRecognizer = require('./patternRecognizer');
 const ProductivityScorer = require('./productivityScorer');
 const InsightGenerator = require('./insightGenerator');
@@ -16,6 +17,24 @@ class AnalysisService {
     this.patternRecognizer = new PatternRecognizer();
     this.productivityScorer = new ProductivityScorer();
     this.insightGenerator = new InsightGenerator();
+    this.privacyMode = true; // Enable privacy-aware analysis by default
+  }
+
+  /**
+   * Set privacy mode for analysis
+   * @param {boolean} enabled - Enable privacy-aware analysis
+   */
+  setPrivacyMode(enabled) {
+    this.privacyMode = enabled;
+    console.log('[AnalysisService] Privacy mode:', enabled ? 'enabled' : 'disabled');
+  }
+
+  /**
+   * Get current privacy mode status
+   * @returns {boolean} Privacy mode status
+   */
+  getPrivacyMode() {
+    return this.privacyMode;
   }
 
   /**
@@ -56,9 +75,14 @@ class AnalysisService {
     }
 
     try {
+      // Choose prompt based on privacy mode
+      const analysisPrompt = this.privacyMode 
+        ? PrivacyAwarePrompts.getPrivacyAwareAnalysisPrompt()
+        : ActivityPrompts.getScreenshotAnalysisPrompt();
+
       // Prepare the multimodal content for Gemini
       const analysisContent = [
-        ActivityPrompts.getScreenshotAnalysisPrompt(),
+        analysisPrompt,
         {
           inlineData: {
             mimeType: 'image/png',
@@ -116,8 +140,12 @@ class AnalysisService {
       // Prepare representative screenshots for AI analysis
       const keyScreenshots = this.selectKeyScreenshots(screenshots, 5);
       
+      const patternPrompt = this.privacyMode
+        ? PrivacyAwarePrompts.getPrivacyAwarePatternPrompt(timeframe)
+        : ActivityPrompts.getPatternAnalysisPrompt(timeframe);
+      
       const patternContent = [
-        ActivityPrompts.getPatternAnalysisPrompt(timeframe),
+        patternPrompt,
         `\nAnalyzing ${screenshots.length} screenshots over ${timeframe}`,
         `\nComputational Pattern Summary: ${JSON.stringify(computationalPatterns, null, 2)}`
       ];
@@ -162,8 +190,12 @@ class AnalysisService {
     }
 
     try {
+      const scoringPrompt = this.privacyMode
+        ? PrivacyAwarePrompts.getPrivacyAwareProductivityPrompt()
+        : ActivityPrompts.getProductivityScoringPrompt();
+
       const scoringContent = [
-        ActivityPrompts.getProductivityScoringPrompt(),
+        scoringPrompt,
         {
           inlineData: {
             mimeType: 'image/png',

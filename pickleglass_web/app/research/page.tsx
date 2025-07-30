@@ -7,6 +7,7 @@ import {
   UserProfile,
   apiCall
 } from '@/utils/api'
+import ZoteroConnector from '@/components/ZoteroConnector'
 import { 
   Calendar, 
   Clock, 
@@ -43,6 +44,18 @@ import {
   Database,
   Microscope
 } from 'lucide-react'
+
+interface ZoteroItem {
+  key: string
+  title: string
+  creators: Array<{ firstName: string; lastName: string }>
+  date: string
+  itemType: string
+  abstract?: string
+  tags?: Array<{ tag: string }>
+  url?: string
+  DOI?: string
+}
 
 // Research categories with icons and colors
 const RESEARCH_CATEGORIES = {
@@ -143,6 +156,8 @@ export default function ResearchPage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [researchProjects, setResearchProjects] = useState<ResearchProject[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedPaper, setSelectedPaper] = useState<ZoteroItem | null>(null)
+  const [showZoteroPanel, setShowZoteroPanel] = useState(false)
 
   const fetchTrackingStatus = useCallback(async () => {
     try {
@@ -283,6 +298,12 @@ export default function ResearchPage() {
     setLastRefresh(Date.now())
     setIsLoading(false)
   }, [fetchTrackingStatus, fetchProductivityScore, fetchInsights, fetchResearchProjects])
+
+  const handlePaperSelected = (paper: ZoteroItem) => {
+    setSelectedPaper(paper)
+    console.log('Selected paper for analysis:', paper)
+    // TODO: Integrate with research tracking to analyze selected paper
+  }
 
   useEffect(() => {
     if (userInfo) {
@@ -525,7 +546,10 @@ export default function ResearchPage() {
               </div>
               
               {!trackingStatus?.zoteroConnected && (
-                <button className="w-full px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium">
+                <button 
+                  onClick={() => setShowZoteroPanel(true)}
+                  className="w-full px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+                >
                   Connect Zotero
                 </button>
               )}
@@ -721,6 +745,53 @@ export default function ResearchPage() {
           )}
         </div>
       </div>
+
+      {/* Zotero Integration Panel */}
+      {showZoteroPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Zotero Paper Analysis</h2>
+              <button
+                onClick={() => setShowZoteroPanel(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <span className="text-2xl">&times;</span>
+              </button>
+            </div>
+            
+            <ZoteroConnector onPaperSelected={handlePaperSelected} />
+            
+            {selectedPaper && (
+              <div className="mt-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                <h3 className="font-medium text-indigo-900 mb-2">Selected for Analysis</h3>
+                <p className="text-sm text-indigo-800 mb-1">{selectedPaper.title}</p>
+                <p className="text-xs text-indigo-600">
+                  {selectedPaper.creators.map(c => `${c.firstName} ${c.lastName}`).join(', ')}
+                </p>
+                <div className="mt-3 flex space-x-2">
+                  <button
+                    onClick={() => {
+                      // TODO: Start research session with selected paper
+                      console.log('Starting research session with paper:', selectedPaper.title)
+                      setShowZoteroPanel(false)
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                  >
+                    Start Research Session
+                  </button>
+                  <button
+                    onClick={() => setSelectedPaper(null)}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 

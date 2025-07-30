@@ -41,6 +41,10 @@ class ResearchService {
     try {
       const settings = await settingsService.getSettings();
       
+      // Configure privacy mode based on settings (default: enabled for privacy)
+      const privacyMode = settings.research?.privacyMode !== false; // Default to true
+      this.analysisService.setPrivacyMode(privacyMode);
+      
       // Try to initialize with available AI providers
       if (settings.gemini?.apiKey) {
         const success = await this.analysisService.initialize(
@@ -50,7 +54,7 @@ class ResearchService {
         );
         if (success) {
           this.aiEnabled = true;
-          console.log('[Research Service] AI analysis enabled with Gemini');
+          console.log('[Research Service] AI analysis enabled with Gemini', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
           return;
         }
       }
@@ -63,7 +67,7 @@ class ResearchService {
         );
         if (success) {
           this.aiEnabled = true;
-          console.log('[Research Service] AI analysis enabled with OpenAI');
+          console.log('[Research Service] AI analysis enabled with OpenAI', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
           return;
         }
       }

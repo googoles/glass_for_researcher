@@ -452,6 +452,91 @@ export class SettingsView extends LitElement {
         select.model-dropdown option:disabled {
             color: rgba(255,255,255,0.4);
         }
+
+        /* Research Provider Selection */
+        .research-provider-section {
+            padding: 8px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .research-provider-section label {
+            display: block;
+            font-size: 11px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 6px;
+        }
+        
+        .provider-options {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .provider-option {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 11px;
+        }
+        
+        .provider-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .provider-option.selected {
+            background: rgba(0, 122, 255, 0.25);
+            border-color: rgba(0, 122, 255, 0.6);
+            box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.3);
+        }
+        
+        .provider-option input[type="radio"] {
+            margin-right: 8px;
+            accent-color: rgba(0, 122, 255, 0.8);
+        }
+        
+        .provider-info {
+            flex: 1;
+        }
+        
+        .provider-name {
+            font-weight: 500;
+            color: white;
+            margin-bottom: 2px;
+        }
+        
+        .provider-option.selected .provider-name {
+            font-weight: 600;
+        }
+        
+        .provider-description {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 1.2;
+        }
+        
+        .provider-status {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 2px;
+            margin-left: 8px;
+        }
+        
+        .provider-status.available {
+            background: rgba(0, 255, 0, 0.2);
+            color: rgba(0, 255, 0, 0.8);
+        }
+        
+        .provider-status.unavailable {
+            background: rgba(255, 100, 100, 0.2);
+            color: rgba(255, 100, 100, 0.8);
+        }
             
         /* ────────────────[ GLASS BYPASS ]─────────────── */
         :host-context(body.has-glass) {
@@ -505,6 +590,10 @@ export class SettingsView extends LitElement {
         installingModels: { type: Object, state: true },
         // Whisper related properties
         whisperModels: { type: Array, state: true },
+        // Research AI provider selection
+        selectedResearchProvider: { type: String, state: true },
+        // Research privacy mode
+        researchPrivacyMode: { type: Boolean, state: true },
     };
     //////// after_modelStateService ////////
 
@@ -534,6 +623,9 @@ export class SettingsView extends LitElement {
         // Whisper related
         this.whisperModels = [];
         this.whisperProgressTracker = null; // Will be initialized when needed
+        // Research AI provider selection
+        this.selectedResearchProvider = 'gemini'; // Default to Gemini
+        this.researchPrivacyMode = true; // Default to privacy mode enabled
         this.handleUsePicklesKey = this.handleUsePicklesKey.bind(this)
         this.autoUpdateEnabled = true;
         this.autoUpdateLoading = true;
@@ -897,6 +989,55 @@ export class SettingsView extends LitElement {
         return null;
     }
 
+
+    async handleResearchProviderChange(provider) {
+        console.log('[SettingsView] Changing research provider to:', provider);
+        this.selectedResearchProvider = provider;
+        
+        try {
+            // Save the selection via IPC
+            if (window.api && window.api.settingsView.setResearchProvider) {
+                await window.api.settingsView.setResearchProvider(provider);
+            }
+        } catch (error) {
+            console.error('[SettingsView] Failed to save research provider:', error);
+        }
+        
+        this.requestUpdate();
+    }
+
+    async handlePrivacyModeToggle() {
+        console.log('[SettingsView] Toggling research privacy mode');
+        this.researchPrivacyMode = !this.researchPrivacyMode;
+        
+        try {
+            // Save the privacy mode setting via IPC
+            if (window.api && window.api.settingsView.setResearchPrivacyMode) {
+                await window.api.settingsView.setResearchPrivacyMode(this.researchPrivacyMode);
+            }
+        } catch (error) {
+            console.error('[SettingsView] Failed to save privacy mode:', error);
+        }
+        
+        this.requestUpdate();
+    }
+
+    getAvailableResearchProviders() {
+        const providers = [];
+        
+        // Check which providers have API keys configured
+        if (this.apiKeys.gemini) {
+            providers.push({ id: 'gemini', name: 'Gemini', description: 'Google\'s Gemini AI' });
+        }
+        if (this.apiKeys.openai) {
+            providers.push({ id: 'openai', name: 'OpenAI', description: 'GPT-4 and other OpenAI models' });
+        }
+        if (this.ollamaStatus.installed && this.ollamaStatus.running) {
+            providers.push({ id: 'ollama', name: 'Ollama', description: 'Local AI models' });
+        }
+        
+        return providers;
+    }
 
     handleUsePicklesKey(e) {
         e.preventDefault()
@@ -1272,6 +1413,54 @@ export class SettingsView extends LitElement {
             return model ? model.name : id;
         }
 
+        const researchProviderHTML = html`
+            <div class="research-provider-section">
+                <label>Research AI Provider</label>
+                <div class="provider-options">
+                    ${this.getAvailableResearchProviders().length === 0 ? html`
+                        <div style="padding: 12px 8px; text-align: center; color: rgba(255, 255, 255, 0.5); font-size: 10px; line-height: 1.4;">
+                            No AI providers configured.<br>
+                            Add API keys above to enable research analysis.
+                        </div>
+                    ` : this.getAvailableResearchProviders().map(provider => html`
+                        <div class="provider-option ${this.selectedResearchProvider === provider.id ? 'selected' : ''}"
+                             @click=${() => this.handleResearchProviderChange(provider.id)}>
+                            <input type="radio" 
+                                   name="research-provider" 
+                                   .checked=${this.selectedResearchProvider === provider.id}
+                                   @change=${() => this.handleResearchProviderChange(provider.id)}>
+                            <div class="provider-info">
+                                <div class="provider-name">${provider.name}</div>
+                                <div class="provider-description">${provider.description}</div>
+                            </div>
+                            <span class="provider-status available">Available</span>
+                        </div>
+                    `)}
+                </div>
+
+                <!-- Privacy Mode Toggle -->
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                    <div class="provider-option ${this.researchPrivacyMode ? 'selected' : ''}"
+                         @click=${this.handlePrivacyModeToggle}>
+                        <input type="checkbox" 
+                               .checked=${this.researchPrivacyMode}
+                               @change=${this.handlePrivacyModeToggle}>
+                        <div class="provider-info">
+                            <div class="provider-name">Privacy Mode</div>
+                            <div class="provider-description">
+                                ${this.researchPrivacyMode 
+                                    ? 'High-level analysis without specific content details' 
+                                    : 'Detailed analysis including specific content (less private)'}
+                            </div>
+                        </div>
+                        <span class="provider-status ${this.researchPrivacyMode ? 'available' : 'unavailable'}">
+                            ${this.researchPrivacyMode ? 'Enabled' : 'Disabled'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+
         const modelSelectionHTML = html`
             <div class="model-selection-section">
                 <div class="model-select-group">
@@ -1367,6 +1556,7 @@ export class SettingsView extends LitElement {
                 </div>
 
                 ${apiKeyManagementHTML}
+                ${researchProviderHTML}
                 ${modelSelectionHTML}
 
                 <div class="buttons-section" style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 6px; margin-top: 6px;">
