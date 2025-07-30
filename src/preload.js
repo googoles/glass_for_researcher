@@ -302,5 +302,20 @@ contextBridge.exposeInMainWorld('api', {
     // Listeners
     onChangeListenCaptureState: (callback) => ipcRenderer.on('change-listen-capture-state', callback),
     removeOnChangeListenCaptureState: (callback) => ipcRenderer.removeListener('change-listen-capture-state', callback)
+  },
+
+  // src/ui/research/ResearchView.js
+  research: {
+    // Research Management
+    getStatus: () => ipcRenderer.invoke('research:get-status'),
+    getDashboardData: () => ipcRenderer.invoke('research:get-dashboard-data'),
+    startTracking: () => ipcRenderer.invoke('research:start-tracking'),
+    stopTracking: () => ipcRenderer.invoke('research:stop-tracking'),
+    getSessions: (limit, offset) => ipcRenderer.invoke('research:get-sessions', { limit, offset }),
+    getSessionDetails: (sessionId) => ipcRenderer.invoke('research:get-session-details', { sessionId }),
+    
+    // Listeners
+    onSessionUpdate: (callback) => ipcRenderer.on('research:session-update', callback),
+    removeOnSessionUpdate: (callback) => ipcRenderer.removeListener('research:session-update', callback)
   }
 });

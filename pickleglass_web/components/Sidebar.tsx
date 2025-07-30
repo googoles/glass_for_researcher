@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useState, createElement, useEffect, useMemo, useCallback, memo } from 'react';
-import { Search, Activity, HelpCircle, Download, ChevronDown, User, Shield, Database, CreditCard, LogOut, LucideIcon } from 'lucide-react';
+import { Search, Activity, HelpCircle, Download, ChevronDown, User, Shield, Database, CreditCard, LogOut, LucideIcon, BarChart3 } from 'lucide-react';
 import { logout, UserProfile, checkApiKeyStatus } from '@/utils/api';
 import { useAuth } from '@/utils/auth';
 
@@ -185,6 +185,20 @@ const SidebarComponent = ({ isCollapsed, onToggle, onSearchClick }: SidebarProps
                 icon: '/activity.svg',
                 isLucide: false,
                 ariaLabel: 'View my activity',
+            },
+            {
+                name: 'Research',
+                href: '/research',
+                icon: '/book.svg',
+                isLucide: false,
+                ariaLabel: 'Research tracking',
+            },
+            {
+                name: 'Analytics',
+                href: '/analytics',
+                icon: BarChart3,
+                isLucide: true,
+                ariaLabel: 'Productivity analytics',
             },
             {
                 name: 'Personalize',

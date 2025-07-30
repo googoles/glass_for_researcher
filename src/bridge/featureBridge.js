@@ -12,6 +12,8 @@ const askService = require('../features/ask/askService');
 const listenService = require('../features/listen/listenService');
 const permissionService = require('../features/common/services/permissionService');
 const encryptionService = require('../features/common/services/encryptionService');
+const researchService = require('../features/research/researchService');
+const activityService = require('../features/activity/activityService');
 
 module.exports = {
   // Renderer로부터의 요청을 수신하고 서비스로 전달
@@ -227,6 +229,107 @@ module.exports = {
     // 전체 상태 조회
     ipcMain.handle('localai:get-all-states', async (event) => {
       return await localAIManager.getAllServiceStates();
+    });
+
+    // Research Tracking (Glass-native)
+    ipcMain.handle('research:get-status', async () => {
+      try {
+        return await researchService.getStatus();
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-status failed', error.message);
+        return { isTracking: false, currentSession: null };
+      }
+    });
+
+    ipcMain.handle('research:get-dashboard-data', async () => {
+      try {
+        return await researchService.getDashboardData();
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-dashboard-data failed', error.message);
+        return { recentSessions: [], dailyStats: null, currentSession: null };
+      }
+    });
+
+    ipcMain.handle('research:start-tracking', async () => {
+      try {
+        return await researchService.startTracking();
+      } catch (error) {
+        console.error('[FeatureBridge] research:start-tracking failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:stop-tracking', async () => {
+      try {
+        return await researchService.stopTracking();
+      } catch (error) {
+        console.error('[FeatureBridge] research:stop-tracking failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:get-sessions', async (event, { limit, offset }) => {
+      try {
+        return await researchService.getSessions(limit, offset);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-sessions failed', error.message);
+        return [];
+      }
+    });
+
+    ipcMain.handle('research:get-session-details', async (event, { sessionId }) => {
+      try {
+        return await researchService.getSessionDetails(sessionId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-session-details failed', error.message);
+        return null;
+      }
+    });
+
+    // Activity Tracking (Glass-native)
+    ipcMain.handle('activity:get-timeline', async (event, { date, projectId }) => {
+      try {
+        return await activityService.getTimeline({ date, projectId });
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-timeline failed', error.message);
+        return { activities: [], totalTime: 0, activeTime: 0, categories: {} };
+      }
+    });
+
+    ipcMain.handle('activity:get-productivity-metrics', async (event, { date, period }) => {
+      try {
+        return await activityService.getProductivityMetrics({ date, period });
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-productivity-metrics failed', error.message);
+        return activityService.getDefaultMetrics();
+      }
+    });
+
+    ipcMain.handle('activity:get-weekly-stats', async (event, { startDate, endDate }) => {
+      try {
+        return await activityService.getWeeklyStats({ startDate, endDate });
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-weekly-stats failed', error.message);
+        return { totalHours: 0, productiveHours: 0, completedProjects: 0, averageScore: 0, dailyScores: [], categoryBreakdown: {} };
+      }
+    });
+
+    ipcMain.handle('activity:get-goal-progress', async () => {
+      try {
+        return await activityService.getGoalProgress();
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-goal-progress failed', error.message);
+        return { daily: { target: 8, actual: 0, percentage: 0 }, weekly: { target: 40, actual: 0, percentage: 0 }, monthly: { target: 160, actual: 0, percentage: 0 } };
+      }
+    });
+
+    ipcMain.handle('activity:set-goals', async (event, { daily, weekly, monthly }) => {
+      try {
+        return await activityService.setGoals({ daily, weekly, monthly });
+      } catch (error) {
+        console.error('[FeatureBridge] activity:set-goals failed', error.message);
+        throw error;
+      }
     });
 
     console.log('[FeatureBridge] Initialized with all feature handlers.');

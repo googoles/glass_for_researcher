@@ -28,7 +28,6 @@ const sessionRepository = require('./features/common/repositories/session');
 const modelStateService = require('./features/common/services/modelStateService');
 const featureBridge = require('./bridge/featureBridge');
 const windowBridge = require('./bridge/windowBridge');
-const researchService = require('./features/research/researchService');
 
 // Global variables
 const eventBridge = new EventEmitter();
@@ -199,15 +198,6 @@ app.whenReady().then(async () => {
         await modelStateService.initialize();
         //////// after_modelStateService ////////
 
-        // Initialize research service
-        await researchService.initialize();
-        console.log('>>> [index.js] Research service initialized successfully');
-
-        // Initialize activity service
-        const activityService = require('./features/activity/activityService');
-        await activityService.initialize();
-        console.log('>>> [index.js] Activity service initialized successfully');
-
         featureBridge.initialize();  // 추가: featureBridge 초기화
         windowBridge.initialize();
         setupWebDataHandlers();
@@ -229,17 +219,7 @@ app.whenReady().then(async () => {
         WEB_PORT = await startWebStack();
         console.log('Web front-end listening on', WEB_PORT);
         
-        // Create windows first
-        const windows = createWindows();
-        
-        // Initialize research tracking after windows are created
-        try {
-            console.log('[Research] Initializing research tracking...');
-            await researchIntegration.initializeResearch(windows);
-            console.log('[Research] Research tracking initialized successfully');
-        } catch (researchError) {
-            console.warn('[Research] Failed to initialize research tracking:', researchError.message);
-        }
+        createWindows();
 
     } catch (err) {
         console.error('>>> [index.js] Database initialization failed - some features may not work', err);
@@ -308,15 +288,7 @@ app.on('before-quit', async (event) => {
             }
         }
         
-        // 4. Shutdown research tracking
-        try {
-            researchIntegration.shutdown();
-            console.log('[Shutdown] Research tracking shut down');
-        } catch (researchError) {
-            console.warn('[Shutdown] Error shutting down research tracking:', researchError.message);
-        }
-        
-        // 5. Close database connections (final cleanup)
+        // 4. Close database connections (final cleanup)
         try {
             databaseInitializer.close();
             console.log('[Shutdown] Database connections closed');
