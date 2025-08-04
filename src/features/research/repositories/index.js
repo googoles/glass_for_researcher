@@ -75,6 +75,47 @@ const researchRepositoryAdapter = {
     getCachedInsights: (insightType, timeframe) => {
         const uid = authService.getCurrentUserId();
         return getBaseRepository().getCachedInsights(insightType, timeframe, uid);
+    },
+
+    // Project management methods
+    createProject: (projectData) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().createProject({ uid, ...projectData });
+    },
+
+    updateProject: (projectId, projectData) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().updateProject(projectId, { uid, ...projectData });
+    },
+
+    getProjectById: (projectId) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getProjectById(projectId, uid);
+    },
+
+    getProjects: (options) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getProjects(options, uid);
+    },
+
+    getSessionsByProject: (projectId) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getSessionsByProject(projectId, uid);
+    },
+
+    getProjectAnalysis: (projectId, days) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getProjectAnalysis(projectId, days, uid);
+    },
+
+    getSessionsInRange: (startTime, endTime, projectId) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getSessionsInRange(startTime, endTime, projectId, uid);
+    },
+
+    getAnalysisInRange: (startTime, endTime, projectId) => {
+        const uid = authService.getCurrentUserId();
+        return getBaseRepository().getAnalysisInRange(startTime, endTime, projectId, uid);
     }
 };
 

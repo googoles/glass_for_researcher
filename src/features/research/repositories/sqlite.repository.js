@@ -67,6 +67,32 @@ class ResearchSqliteRepository {
       )
     `);
 
+    // Create projects table for project management
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS research_projects (
+        id TEXT PRIMARY KEY,
+        uid TEXT,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        status TEXT DEFAULT 'active',
+        tags TEXT DEFAULT '[]',
+        zotero_key TEXT,
+        metadata TEXT DEFAULT '{}',
+        goals TEXT DEFAULT '[]',
+        deadline DATETIME,
+        priority TEXT DEFAULT 'medium',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add project_id to research_sessions if it doesn't exist
+    try {
+      db.exec(`ALTER TABLE research_sessions ADD COLUMN project_id TEXT`);
+    } catch (error) {
+      // Column already exists, ignore
+    }
+
     console.log('[Research SQLite Repository] Tables created/verified');
     
     // Clean expired insights on initialization
@@ -382,6 +408,248 @@ class ResearchSqliteRepository {
       DELETE FROM research_insights
       WHERE expires_at <= datetime('now')
     `);
+  }
+
+  // ========== PROJECT MANAGEMENT METHODS ==========
+
+  async createProject(projectData) {
+    const db = sqliteClient.getDb();
+    
+    const result = await db.run(`
+      INSERT INTO research_projects (
+        id, uid, name, description, status, tags, zotero_key,
+        metadata, goals, deadline, priority
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      projectData.id,
+      projectData.uid,
+      projectData.name,
+      projectData.description || '',
+      projectData.status || 'active',
+      JSON.stringify(projectData.tags || []),
+      projectData.zotero_key || null,
+      JSON.stringify(projectData.metadata || {}),
+      JSON.stringify(projectData.goals || []),
+      projectData.deadline || null,
+      projectData.priority || 'medium'
+    ]);
+
+    return {
+      ...projectData,
+      tags: projectData.tags || [],
+      metadata: projectData.metadata || {},
+      goals: projectData.goals || []
+    };
+  }
+
+  async updateProject(projectId, projectData) {
+    const db = sqliteClient.getDb();
+    
+    const fields = [];
+    const params = [];
+
+    // Only update provided fields
+    if (projectData.name !== undefined) {
+      fields.push('name = ?');
+      params.push(projectData.name);
+    }
+    if (projectData.description !== undefined) {
+      fields.push('description = ?');
+      params.push(projectData.description);
+    }
+    if (projectData.status !== undefined) {
+      fields.push('status = ?');
+      params.push(projectData.status);
+    }
+    if (projectData.tags !== undefined) {
+      fields.push('tags = ?');
+      params.push(JSON.stringify(projectData.tags));
+    }
+    if (projectData.zotero_key !== undefined) {
+      fields.push('zotero_key = ?');
+      params.push(projectData.zotero_key);
+    }
+    if (projectData.metadata !== undefined) {
+      fields.push('metadata = ?');
+      params.push(JSON.stringify(projectData.metadata));
+    }
+    if (projectData.goals !== undefined) {
+      fields.push('goals = ?');
+      params.push(JSON.stringify(projectData.goals));
+    }
+    if (projectData.deadline !== undefined) {
+      fields.push('deadline = ?');
+      params.push(projectData.deadline);
+    }
+    if (projectData.priority !== undefined) {
+      fields.push('priority = ?');
+      params.push(projectData.priority);
+    }
+
+    // Always update the updated_at timestamp
+    fields.push('updated_at = ?');
+    params.push(new Date().toISOString());
+
+    params.push(projectId);
+    params.push(projectData.uid);
+
+    await db.run(`
+      UPDATE research_projects
+      SET ${fields.join(', ')}
+      WHERE id = ? AND uid = ?
+    `, params);
+
+    return await this.getProjectById(projectId, projectData.uid);
+  }
+
+  async getProjectById(projectId, uid) {
+    const db = sqliteClient.getDb();
+    
+    const project = await db.get(`
+      SELECT * FROM research_projects
+      WHERE id = ? AND uid = ?
+    `, [projectId, uid]);
+
+    if (project) {
+      return {
+        ...project,
+        tags: JSON.parse(project.tags || '[]'),
+        metadata: JSON.parse(project.metadata || '{}'),
+        goals: JSON.parse(project.goals || '[]')
+      };
+    }
+
+    return null;
+  }
+
+  async getProjects(options = {}, uid) {
+    const db = sqliteClient.getDb();
+    
+    const {
+      status = 'active',
+      limit = 50,
+      offset = 0,
+      sortBy = 'updated_at',
+      sortOrder = 'desc'
+    } = options;
+
+    let query = `
+      SELECT * FROM research_projects
+      WHERE uid = ?
+    `;
+    const params = [uid];
+
+    if (status !== 'all') {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+
+    query += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
+    query += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const projects = await db.all(query, params);
+
+    return projects.map(project => ({
+      ...project,
+      tags: JSON.parse(project.tags || '[]'),
+      metadata: JSON.parse(project.metadata || '{}'),
+      goals: JSON.parse(project.goals || '[]')
+    }));
+  }
+
+  async getSessionsByProject(projectId, uid) {
+    const db = sqliteClient.getDb();
+    
+    const sessions = await db.all(`
+      SELECT * FROM research_sessions
+      WHERE project_id = ? AND uid = ?
+      ORDER BY start_time DESC
+    `, [projectId, uid]);
+
+    return sessions.map(session => ({
+      ...session,
+      metadata: JSON.parse(session.metadata || '{}')
+    }));
+  }
+
+  async getProjectAnalysis(projectId, days = 7, uid) {
+    const db = sqliteClient.getDb();
+    
+    const cutoffTime = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
+    
+    const analyses = await db.all(`
+      SELECT ra.* FROM research_analysis ra
+      JOIN research_sessions rs ON ra.session_id = rs.id
+      WHERE rs.project_id = ? AND ra.uid = ? AND ra.timestamp >= ?
+      ORDER BY ra.timestamp DESC
+    `, [projectId, uid, cutoffTime]);
+
+    return analyses.map(analysis => ({
+      ...analysis,
+      applications: JSON.parse(analysis.applications || '[]'),
+      categories: JSON.parse(analysis.categories || '[]'),
+      tags: JSON.parse(analysis.tags || '[]')
+    }));
+  }
+
+  async getSessionsInRange(startTime, endTime, projectId = null, uid) {
+    const db = sqliteClient.getDb();
+    
+    let query = `
+      SELECT * FROM research_sessions
+      WHERE uid = ? AND start_time >= ? AND start_time <= ?
+    `;
+    const params = [uid, startTime, endTime];
+
+    if (projectId) {
+      query += ' AND project_id = ?';
+      params.push(projectId);
+    }
+
+    query += ' ORDER BY start_time DESC';
+
+    const sessions = await db.all(query, params);
+
+    return sessions.map(session => ({
+      ...session,
+      metadata: JSON.parse(session.metadata || '{}')
+    }));
+  }
+
+  async getAnalysisInRange(startTime, endTime, projectId = null, uid) {
+    const db = sqliteClient.getDb();
+    
+    let query = `
+      SELECT ra.* FROM research_analysis ra
+    `;
+    
+    if (projectId) {
+      query += `
+        JOIN research_sessions rs ON ra.session_id = rs.id
+        WHERE ra.uid = ? AND ra.timestamp >= ? AND ra.timestamp <= ?
+        AND rs.project_id = ?
+      `;
+    } else {
+      query += `
+        WHERE ra.uid = ? AND ra.timestamp >= ? AND ra.timestamp <= ?
+      `;
+    }
+
+    query += ' ORDER BY ra.timestamp DESC';
+
+    const params = projectId 
+      ? [uid, startTime, endTime, projectId]
+      : [uid, startTime, endTime];
+
+    const analyses = await db.all(query, params);
+
+    return analyses.map(analysis => ({
+      ...analysis,
+      applications: JSON.parse(analysis.applications || '[]'),
+      categories: JSON.parse(analysis.categories || '[]'),
+      tags: JSON.parse(analysis.tags || '[]')
+    }));
   }
 }
 

@@ -13,6 +13,7 @@ const listenService = require('../features/listen/listenService');
 const permissionService = require('../features/common/services/permissionService');
 const encryptionService = require('../features/common/services/encryptionService');
 const activityService = require('../features/activity/activityService');
+const secureCredentialsService = require('../features/common/services/secureCredentialsService');
 
 module.exports = {
   // Renderer로부터의 요청을 수신하고 서비스로 전달
@@ -23,7 +24,24 @@ module.exports = {
     ipcMain.handle('settings:set-auto-update', async (event, isEnabled) => await settingsService.setAutoUpdateSetting(isEnabled));  
     ipcMain.handle('settings:get-model-settings', async () => await settingsService.getModelSettings());
     ipcMain.handle('settings:clear-api-key', async (e, { provider }) => await settingsService.clearApiKey(provider));
-    ipcMain.handle('settings:set-selected-model', async (e, { type, modelId }) => await settingsService.setSelectedModel(type, modelId));    
+    ipcMain.handle('settings:set-selected-model', async (e, { type, modelId }) => await settingsService.setSelectedModel(type, modelId));
+    
+    // Research settings
+    ipcMain.handle('settings:set-research-provider', async (event, provider) => await settingsService.setResearchProvider(provider));
+    ipcMain.handle('settings:get-research-provider', async () => await settingsService.getResearchProvider());
+    ipcMain.handle('settings:set-research-privacy-mode', async (event, enabled) => await settingsService.setResearchPrivacyMode(enabled));
+    ipcMain.handle('settings:get-research-privacy-mode', async () => await settingsService.getResearchPrivacyMode());
+    
+    // Secure Credentials
+    ipcMain.handle('credentials:store-zotero', async (event, { userId, apiKey, zoteroUserId }) => {
+      return await secureCredentialsService.storeZoteroCredentials(userId, apiKey, zoteroUserId);
+    });
+    ipcMain.handle('credentials:get-zotero', async (event, userId) => {
+      return await secureCredentialsService.getZoteroCredentials(userId);
+    });
+    ipcMain.handle('credentials:remove-zotero', async (event, userId) => {
+      return await secureCredentialsService.removeZoteroCredentials(userId);
+    });    
 
     ipcMain.handle('settings:get-ollama-status', async () => await settingsService.getOllamaStatus());
     ipcMain.handle('settings:ensure-ollama-ready', async () => await settingsService.ensureOllamaReady());
@@ -439,6 +457,147 @@ module.exports = {
       } catch (error) {
         console.error('[FeatureBridge] research:set-capture-interval failed', error.message);
         throw error;
+      }
+    });
+
+    // ========== PROJECT MANAGEMENT HANDLERS ==========
+    
+    ipcMain.handle('research:create-project', async (event, projectData) => {
+      try {
+        return await researchService.createProject(projectData);
+      } catch (error) {
+        console.error('[FeatureBridge] research:create-project failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:update-project', async (event, { projectId, updates }) => {
+      try {
+        return await researchService.updateProject(projectId, updates);
+      } catch (error) {
+        console.error('[FeatureBridge] research:update-project failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:delete-project', async (event, { projectId }) => {
+      try {
+        return await researchService.deleteProject(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:delete-project failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:get-projects', async (event, filters) => {
+      try {
+        return await researchService.getProjects(filters);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-projects failed', error.message);
+        return [];
+      }
+    });
+
+    ipcMain.handle('research:get-project', async (event, { projectId }) => {
+      try {
+        return await researchService.getProjectById(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-project failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('research:set-current-project', async (event, { projectId }) => {
+      try {
+        return await researchService.setCurrentProject(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:set-current-project failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:get-project-sessions', async (event, { projectId }) => {
+      try {
+        return await researchService.getProjectSessions(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-project-sessions failed', error.message);
+        return [];
+      }
+    });
+
+    ipcMain.handle('research:get-project-analytics', async (event, { projectId, timeframe }) => {
+      try {
+        return await researchService.getResearchAnalytics(timeframe, projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-project-analytics failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('research:get-project-progress', async (event, { projectId }) => {
+      try {
+        return await researchService.getProjectProgress(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-project-progress failed', error.message);
+        return null;
+      }
+    });
+
+    // ========== ZOTERO INTEGRATION HANDLERS ==========
+    
+    ipcMain.handle('research:sync-project-zotero', async (event, { projectId }) => {
+      try {
+        return await researchService.syncWithZotero(projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:sync-project-zotero failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('research:link-project-zotero', async (event, { projectId, zoteroKey }) => {
+      try {
+        return await researchService.linkProjectToZotero(projectId, zoteroKey);
+      } catch (error) {
+        console.error('[FeatureBridge] research:link-project-zotero failed', error.message);
+        throw error;
+      }
+    });
+
+    // ========== ANALYTICS HANDLERS ==========
+    
+    ipcMain.handle('research:get-analytics', async (event, { timeframe, projectId }) => {
+      try {
+        return await researchService.getResearchAnalytics(timeframe, projectId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-analytics failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('research:get-productivity-trends', async (event, { timeframe }) => {
+      try {
+        return await researchService.getProductivityTrends(timeframe);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-productivity-trends failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('research:get-session-analytics', async (event, { sessionId }) => {
+      try {
+        return await researchService.getSessionAnalytics(sessionId);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-session-analytics failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('research:get-recent-updates', async (event, { since }) => {
+      try {
+        return await researchService.getRecentUpdates(since);
+      } catch (error) {
+        console.error('[FeatureBridge] research:get-recent-updates failed', error.message);
+        return [];
       }
     });
 

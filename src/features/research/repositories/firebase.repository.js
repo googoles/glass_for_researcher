@@ -343,6 +343,221 @@ class ResearchFirebaseRepository {
       console.log(`[Research Firebase Repository] Cleaned ${expiredSnapshot.docs.length} expired insights`);
     }
   }
+
+  // ========== PROJECT MANAGEMENT METHODS ==========
+
+  async createProject(projectData) {
+    const db = firebaseClient.getDb();
+    
+    const projectDoc = {
+      id: projectData.id,
+      uid: projectData.uid,
+      name: projectData.name,
+      description: projectData.description || '',
+      status: projectData.status || 'active',
+      tags: projectData.tags || [],
+      zotero_key: projectData.zotero_key || null,
+      metadata: projectData.metadata || {},
+      goals: projectData.goals || [],
+      deadline: projectData.deadline || null,
+      priority: projectData.priority || 'medium',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    await db.collection('research_projects').doc(projectData.id).set(projectDoc);
+    
+    return projectDoc;
+  }
+
+  async updateProject(projectId, projectData) {
+    const db = firebaseClient.getDb();
+    
+    const updateData = {
+      ...projectData,
+      updated_at: new Date().toISOString()
+    };
+
+    // Remove uid from update data as it shouldn't change
+    delete updateData.uid;
+
+    await db.collection('research_projects').doc(projectId).update(updateData);
+    
+    return await this.getProjectById(projectId, projectData.uid);
+  }
+
+  async getProjectById(projectId, uid) {
+    const db = firebaseClient.getDb();
+    
+    const doc = await db.collection('research_projects').doc(projectId).get();
+    
+    if (!doc.exists) return null;
+    
+    const data = doc.data();
+    if (data.uid !== uid) return null;
+    
+    return {
+      id: doc.id,
+      ...data
+    };
+  }
+
+  async getProjects(options = {}, uid) {
+    const db = firebaseClient.getDb();
+    
+    const {
+      status = 'active',
+      limit = 50,
+      sortBy = 'updated_at',
+      sortOrder = 'desc'
+    } = options;
+
+    let query = db.collection('research_projects')
+      .where('uid', '==', uid);
+
+    if (status !== 'all') {
+      query = query.where('status', '==', status);
+    }
+
+    query = query.orderBy(sortBy, sortOrder).limit(limit);
+
+    const snapshot = await query.get();
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  async getSessionsByProject(projectId, uid) {
+    const db = firebaseClient.getDb();
+    
+    const snapshot = await db.collection('research_sessions')
+      .where('uid', '==', uid)
+      .where('project_id', '==', projectId)
+      .orderBy('start_time', 'desc')
+      .get();
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  async getProjectAnalysis(projectId, days = 7, uid) {
+    const db = firebaseClient.getDb();
+    
+    const cutoffTime = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
+    
+    // First get sessions for the project
+    const sessionsSnapshot = await db.collection('research_sessions')
+      .where('uid', '==', uid)
+      .where('project_id', '==', projectId)
+      .get();
+    
+    if (sessionsSnapshot.empty) return [];
+    
+    const sessionIds = sessionsSnapshot.docs.map(doc => doc.id);
+    
+    // Get analysis data for these sessions
+    // Note: Firebase doesn't support IN queries with more than 10 items,
+    // so we'll need to batch this for larger datasets
+    const analysisPromises = sessionIds.slice(0, 10).map(sessionId => 
+      db.collection('research_analysis')
+        .where('uid', '==', uid)
+        .where('session_id', '==', sessionId)
+        .where('timestamp', '>=', cutoffTime)
+        .get()
+    );
+    
+    const analysisSnapshots = await Promise.all(analysisPromises);
+    const analyses = [];
+    
+    analysisSnapshots.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        analyses.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+    });
+    
+    return analyses.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }
+
+  async getSessionsInRange(startTime, endTime, projectId = null, uid) {
+    const db = firebaseClient.getDb();
+    
+    let query = db.collection('research_sessions')
+      .where('uid', '==', uid)
+      .where('start_time', '>=', startTime)
+      .where('start_time', '<=', endTime);
+
+    if (projectId) {
+      query = query.where('project_id', '==', projectId);
+    }
+
+    query = query.orderBy('start_time', 'desc');
+
+    const snapshot = await query.get();
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  async getAnalysisInRange(startTime, endTime, projectId = null, uid) {
+    const db = firebaseClient.getDb();
+    
+    let query = db.collection('research_analysis')
+      .where('uid', '==', uid)
+      .where('timestamp', '>=', startTime)
+      .where('timestamp', '<=', endTime);
+
+    if (projectId) {
+      // For Firebase, we need to get sessions first, then filter analysis
+      const sessionsSnapshot = await db.collection('research_sessions')
+        .where('uid', '==', uid)
+        .where('project_id', '==', projectId)
+        .get();
+      
+      if (sessionsSnapshot.empty) return [];
+      
+      const sessionIds = sessionsSnapshot.docs.map(doc => doc.id);
+      
+      // Batch the session ID queries (Firebase limit of 10 per IN query)
+      const batches = [];
+      for (let i = 0; i < sessionIds.length; i += 10) {
+        const batch = sessionIds.slice(i, i + 10);
+        batches.push(
+          query.where('session_id', 'in', batch).get()
+        );
+      }
+      
+      const snapshots = await Promise.all(batches);
+      const analyses = [];
+      
+      snapshots.forEach(snapshot => {
+        snapshot.docs.forEach(doc => {
+          analyses.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+      });
+      
+      return analyses.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+
+    query = query.orderBy('timestamp', 'desc');
+    const snapshot = await query.get();
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
 }
 
 module.exports = new ResearchFirebaseRepository();

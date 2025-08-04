@@ -2,20 +2,32 @@ const researchRepository = require('./repositories');
 const { BrowserWindow, desktopCapturer } = require('electron');
 const AnalysisService = require('./ai/analysisService');
 const settingsService = require('../settings/settingsService');
+const CacheService = require('./services/cacheService');
+const ProjectService = require('./services/projectService');
+const AnalyticsService = require('./services/analyticsService');
+const ZoteroService = require('./services/zoteroService');
+const { EventEmitter } = require('events');
 
-class ResearchService {
+class ResearchService extends EventEmitter {
   constructor() {
+    super();
     this.isTracking = false;
     this.currentSession = null;
+    this.currentProject = null;
     this.lastDetectedPDF = null;
     this.checkInterval = 3000; // Check every 3 seconds
     this.intervalId = null;
     this.analysisService = new AnalysisService();
+    this.cacheService = new CacheService();
+    this.projectService = new ProjectService();
+    this.analyticsService = new AnalyticsService();
+    this.zoteroService = new ZoteroService();
     this.aiEnabled = false;
     this.screenshotHistory = [];
     this.analysisHistory = [];
     this.lastScreenshotTime = 0;
     this.screenshotInterval = 60000; // Take screenshot every minute during tracking
+    this.realTimeUpdates = new Map(); // For WebSocket-like updates
   }
 
   async initialize() {
@@ -24,14 +36,31 @@ class ResearchService {
       await researchRepository.initialize();
       console.log('[Research Service] Research repository initialized');
       
+      // Initialize all services
+      await this.cacheService.initialize();
+      await this.projectService.initialize();
+      await this.analyticsService.initialize();
+      await this.zoteroService.initialize();
+      
       // Initialize AI analysis if API keys are available
       await this.initializeAI();
+      
+      // Setup real-time update cleanup
+      setInterval(() => this.cleanupOldUpdates(), 30000); // Clean every 30 seconds
       
       return true;
     } catch (error) {
       console.error('[Research Service] Failed to initialize:', error);
       return false;
     }
+  }
+
+  /**
+   * Update AI configuration when settings change
+   */
+  async updateAIConfiguration() {
+    console.log('[Research Service] Updating AI configuration...');
+    await this.initializeAI();
   }
 
   /**
@@ -45,8 +74,12 @@ class ResearchService {
       const privacyMode = settings.research?.privacyMode !== false; // Default to true
       this.analysisService.setPrivacyMode(privacyMode);
       
-      // Try to initialize with available AI providers
-      if (settings.gemini?.apiKey) {
+      // Get selected research provider (default: gemini)
+      const selectedProvider = settings.research?.provider || 'gemini';
+      console.log('[Research Service] Using selected provider:', selectedProvider);
+      
+      // Try to initialize with the selected provider first
+      if (selectedProvider === 'gemini' && settings.gemini?.apiKey) {
         const success = await this.analysisService.initialize(
           settings.gemini.apiKey, 
           'gemini', 
@@ -59,7 +92,7 @@ class ResearchService {
         }
       }
       
-      if (settings.openai?.apiKey) {
+      if (selectedProvider === 'openai' && settings.openai?.apiKey) {
         const success = await this.analysisService.initialize(
           settings.openai.apiKey, 
           'openai', 
@@ -68,6 +101,54 @@ class ResearchService {
         if (success) {
           this.aiEnabled = true;
           console.log('[Research Service] AI analysis enabled with OpenAI', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
+          return;
+        }
+      }
+      
+      if (selectedProvider === 'ollama') {
+        // Check if Ollama is running
+        const ollamaService = require('../common/services/ollamaService');
+        const status = await ollamaService.handleGetStatus();
+        
+        if (status.success && status.running) {
+          const success = await this.analysisService.initialize(
+            'local', // Ollama uses local connection
+            'ollama', 
+            'llama3.2:3b' // Default Ollama model
+          );
+          if (success) {
+            this.aiEnabled = true;
+            console.log('[Research Service] AI analysis enabled with Ollama', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
+            return;
+          }
+        } else {
+          console.log('[Research Service] Ollama not available - not running');
+        }
+      }
+      
+      // Fallback to other available providers if selected one fails
+      if (selectedProvider !== 'gemini' && settings.gemini?.apiKey) {
+        const success = await this.analysisService.initialize(
+          settings.gemini.apiKey, 
+          'gemini', 
+          'gemini-2.5-flash'
+        );
+        if (success) {
+          this.aiEnabled = true;
+          console.log('[Research Service] AI analysis enabled with Gemini (fallback)', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
+          return;
+        }
+      }
+      
+      if (selectedProvider !== 'openai' && settings.openai?.apiKey) {
+        const success = await this.analysisService.initialize(
+          settings.openai.apiKey, 
+          'openai', 
+          'gpt-4o'
+        );
+        if (success) {
+          this.aiEnabled = true;
+          console.log('[Research Service] AI analysis enabled with OpenAI (fallback)', privacyMode ? '(Privacy Mode)' : '(Detailed Mode)');
           return;
         }
       }
@@ -200,12 +281,49 @@ class ResearchService {
         await this.endCurrentSession();
       }
 
+      // Check if this PDF is associated with a Zotero paper
+      const zoteroData = await this.zoteroService.findPaperByTitle(pdfData.title);
+      
+      // Determine or create project for this session
+      let project = this.currentProject;
+      if (!project && zoteroData) {
+        // Try to find existing project for this paper
+        project = await this.projectService.findProjectByZoteroKey(zoteroData.key);
+        if (!project) {
+          // Create new project from Zotero data
+          project = await this.projectService.createProject({
+            name: zoteroData.title,
+            description: zoteroData.abstract || 'Research project created from Zotero paper',
+            zotero_key: zoteroData.key,
+            metadata: {
+              creators: zoteroData.creators,
+              doi: zoteroData.DOI,
+              url: zoteroData.url,
+              tags: zoteroData.tags
+            }
+          });
+        }
+      }
+
       // Create new session
       this.currentSession = await researchRepository.createSession({
         title: pdfData.title,
         session_type: 'pdf_reading',
+        project_id: project?.id,
         start_time: new Date().toISOString(),
-        pdf_source: pdfData.source
+        pdf_source: pdfData.source,
+        metadata: {
+          zotero_data: zoteroData,
+          detected_source: pdfData.source
+        }
+      });
+
+      this.currentProject = project;
+      
+      // Emit real-time update
+      this.emitUpdate('session-started', {
+        session: this.currentSession,
+        project: this.currentProject
       });
 
       console.log(`[Research Service] Started new session: ${this.currentSession.id}`);
@@ -628,6 +746,362 @@ class ResearchService {
     } catch (error) {
       console.error('[Research Service] Failed to get productivity stats:', error);
       return null;
+    }
+  }
+
+  // ========== PROJECT MANAGEMENT ==========
+  
+  async createProject(projectData) {
+    try {
+      const project = await this.projectService.createProject(projectData);
+      this.emitUpdate('project-created', project);
+      return project;
+    } catch (error) {
+      console.error('[Research Service] Failed to create project:', error);
+      throw error;
+    }
+  }
+
+  async updateProject(projectId, updates) {
+    try {
+      const project = await this.projectService.updateProject(projectId, updates);
+      this.emitUpdate('project-updated', project);
+      return project;
+    } catch (error) {
+      console.error('[Research Service] Failed to update project:', error);
+      throw error;
+    }
+  }
+
+  async deleteProject(projectId) {
+    try {
+      await this.projectService.deleteProject(projectId);
+      if (this.currentProject?.id === projectId) {
+        this.currentProject = null;
+      }
+      this.emitUpdate('project-deleted', { projectId });
+      return true;
+    } catch (error) {
+      console.error('[Research Service] Failed to delete project:', error);
+      throw error;
+    }
+  }
+
+  async getProjects(filters = {}) {
+    try {
+      return await this.projectService.getProjects(filters);
+    } catch (error) {
+      console.error('[Research Service] Failed to get projects:', error);
+      return [];
+    }
+  }
+
+  async getProjectById(projectId) {
+    try {
+      return await this.projectService.getProjectById(projectId);
+    } catch (error) {
+      console.error('[Research Service] Failed to get project:', error);
+      return null;
+    }
+  }
+
+  async setCurrentProject(projectId) {
+    try {
+      this.currentProject = await this.projectService.getProjectById(projectId);
+      this.emitUpdate('current-project-changed', this.currentProject);
+      return this.currentProject;
+    } catch (error) {
+      console.error('[Research Service] Failed to set current project:', error);
+      throw error;
+    }
+  }
+
+  async getProjectSessions(projectId) {
+    try {
+      return await researchRepository.getSessionsByProject(projectId);
+    } catch (error) {
+      console.error('[Research Service] Failed to get project sessions:', error);
+      return [];
+    }
+  }
+
+  async getProjectProgress(projectId) {
+    try {
+      return await this.projectService.getProjectProgress(projectId);
+    } catch (error) {
+      console.error('[Research Service] Failed to get project progress:', error);
+      return null;
+    }
+  }
+
+  // ========== ZOTERO INTEGRATION ==========
+  
+  async syncWithZotero(projectId) {
+    try {
+      const project = await this.projectService.getProjectById(projectId);
+      if (!project || !project.zotero_key) {
+        throw new Error('Project not linked to Zotero paper');
+      }
+      
+      const zoteroData = await this.zoteroService.getPaperByKey(project.zotero_key);
+      if (zoteroData) {
+        await this.projectService.updateProject(projectId, {
+          metadata: {
+            ...project.metadata,
+            zotero_data: zoteroData,
+            last_synced: new Date().toISOString()
+          }
+        });
+      }
+      
+      return zoteroData;
+    } catch (error) {
+      console.error('[Research Service] Failed to sync with Zotero:', error);
+      throw error;
+    }
+  }
+
+  async linkProjectToZotero(projectId, zoteroKey) {
+    try {
+      const zoteroData = await this.zoteroService.getPaperByKey(zoteroKey);
+      if (!zoteroData) {
+        throw new Error('Zotero paper not found');
+      }
+      
+      const project = await this.projectService.updateProject(projectId, {
+        zotero_key: zoteroKey,
+        metadata: {
+          zotero_data: zoteroData,
+          linked_at: new Date().toISOString()
+        }
+      });
+      
+      this.emitUpdate('project-linked-zotero', { project, zoteroData });
+      return project;
+    } catch (error) {
+      console.error('[Research Service] Failed to link project to Zotero:', error);
+      throw error;
+    }
+  }
+
+  // ========== ANALYTICS & INSIGHTS ==========
+  
+  async getResearchAnalytics(timeframe = '7d', projectId = null) {
+    try {
+      // Check cache first
+      const cacheKey = `analytics:${timeframe}:${projectId || 'all'}`;
+      const cached = await this.cacheService.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const analytics = await this.analyticsService.generateAnalytics({
+        timeframe,
+        projectId,
+        includeSessions: true,
+        includeProductivity: true,
+        includeInsights: true
+      });
+
+      // Cache for 10 minutes
+      await this.cacheService.set(cacheKey, analytics, 600);
+      return analytics;
+    } catch (error) {
+      console.error('[Research Service] Failed to get analytics:', error);
+      return null;
+    }
+  }
+
+  async getProductivityTrends(timeframe = '30d') {
+    try {
+      const cacheKey = `productivity-trends:${timeframe}`;
+      const cached = await this.cacheService.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const trends = await this.analyticsService.getProductivityTrends(timeframe);
+      await this.cacheService.set(cacheKey, trends, 300); // 5 minute cache
+      return trends;
+    } catch (error) {
+      console.error('[Research Service] Failed to get productivity trends:', error);
+      return null;
+    }
+  }
+
+  async getSessionAnalytics(sessionId) {
+    try {
+      const cacheKey = `session-analytics:${sessionId}`;
+      const cached = await this.cacheService.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const analytics = await this.analyticsService.getSessionAnalytics(sessionId);
+      await this.cacheService.set(cacheKey, analytics, 1800); // 30 minute cache
+      return analytics;
+    } catch (error) {
+      console.error('[Research Service] Failed to get session analytics:', error);
+      return null;
+    }
+  }
+
+  // ========== CACHING LAYER ==========
+  
+  async captureAndAnalyze() {
+    try {
+      const screenshot = await this.captureScreenshot();
+      if (!screenshot.success) {
+        console.warn('[Research Service] Screenshot capture failed:', screenshot.error);
+        return;
+      }
+
+      const context = {
+        timestamp: Date.now(),
+        activeApplication: await this.getActiveApplication(),
+        windowTitle: await this.getActiveWindowTitle(),
+        sessionId: this.currentSession?.id,
+        projectId: this.currentProject?.id
+      };
+
+      // Check cache for similar screenshots to avoid redundant analysis
+      const screenshotHash = this.generateScreenshotHash(screenshot.base64);
+      const cacheKey = `analysis:${screenshotHash}`;
+      let analysis = await this.cacheService.get(cacheKey);
+      
+      if (!analysis) {
+        // Perform AI analysis
+        analysis = await this.analysisService.analyzeScreenshot(
+          screenshot.base64,
+          context
+        );
+        
+        // Cache analysis for 5 minutes to avoid duplicate processing
+        await this.cacheService.set(cacheKey, analysis, 300);
+      }
+
+      // Store screenshot and analysis
+      this.screenshotHistory.push({
+        timestamp: context.timestamp,
+        base64: screenshot.base64,
+        width: screenshot.width,
+        height: screenshot.height,
+        context,
+        hash: screenshotHash
+      });
+
+      this.analysisHistory.push({
+        ...analysis,
+        timestamp: context.timestamp,
+        sessionId: context.sessionId,
+        projectId: context.projectId
+      });
+
+      // Limit history size to prevent memory issues
+      if (this.screenshotHistory.length > 100) {
+        this.screenshotHistory = this.screenshotHistory.slice(-50);
+      }
+      if (this.analysisHistory.length > 100) {
+        this.analysisHistory = this.analysisHistory.slice(-50);
+      }
+
+      // Store analysis in database
+      if (this.currentSession) {
+        await this.storeAnalysis(analysis, context);
+      }
+
+      // Send real-time updates
+      this.emitUpdate('analysis-update', {
+        analysis,
+        context,
+        productivity_score: analysis.productivity_score || 0
+      });
+
+      console.log(`[Research Service] Analysis completed - Productivity: ${analysis.productivity_score || 'N/A'}`);
+    } catch (error) {
+      console.error('[Research Service] Analysis failed:', error);
+    }
+  }
+
+  generateScreenshotHash(base64Data) {
+    // Simple hash based on data length and sample content
+    const crypto = require('crypto');
+    return crypto.createHash('md5')
+      .update(base64Data.substring(0, 1000)) // Sample first 1000 chars
+      .digest('hex');
+  }
+
+  // ========== REAL-TIME UPDATES ==========
+  
+  emitUpdate(event, data) {
+    // Store for real-time API polling
+    const updateId = Date.now() + Math.random();
+    this.realTimeUpdates.set(updateId, {
+      event,
+      data,
+      timestamp: Date.now()
+    });
+    
+    // Send to renderer processes
+    this.sendToRenderer(event, data);
+    
+    // Emit to event listeners
+    this.emit(event, data);
+  }
+
+  getRecentUpdates(since = 0) {
+    const updates = [];
+    for (const [id, update] of this.realTimeUpdates) {
+      if (update.timestamp > since) {
+        updates.push({ id, ...update });
+      }
+    }
+    return updates.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  cleanupOldUpdates() {
+    const cutoff = Date.now() - (5 * 60 * 1000); // Keep updates for 5 minutes
+    for (const [id, update] of this.realTimeUpdates) {
+      if (update.timestamp < cutoff) {
+        this.realTimeUpdates.delete(id);
+      }
+    }
+  }
+
+  // ========== SESSION MANAGEMENT ENHANCEMENTS ==========
+  
+  async endCurrentSession() {
+    if (!this.currentSession) return;
+
+    try {
+      const endTime = new Date().toISOString();
+      const startTime = new Date(this.currentSession.start_time);
+      const duration = new Date(endTime) - startTime;
+
+      // Generate session summary
+      const sessionAnalytics = await this.analyticsService.generateSessionSummary(
+        this.currentSession.id,
+        this.analysisHistory.filter(a => a.sessionId === this.currentSession.id)
+      );
+
+      await researchRepository.updateSession(this.currentSession.id, {
+        end_time: endTime,
+        duration_ms: duration,
+        metadata: {
+          ...this.currentSession.metadata,
+          summary: sessionAnalytics
+        }
+      });
+
+      this.emitUpdate('session-ended', {
+        session: this.currentSession,
+        analytics: sessionAnalytics
+      });
+
+      console.log(`[Research Service] Ended session: ${this.currentSession.id}, Duration: ${Math.round(duration / 1000)}s`);
+      this.currentSession = null;
+    } catch (error) {
+      console.error('[Research Service] Failed to end session:', error);
     }
   }
 

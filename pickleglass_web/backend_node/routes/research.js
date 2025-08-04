@@ -175,4 +175,253 @@ router.get('/ai-status', async (req, res) => {
     }
 });
 
+// ========== PROJECT MANAGEMENT ENDPOINTS ==========
+
+router.get('/projects', async (req, res) => {
+    try {
+        const { status = 'active', limit = 50, offset = 0, sortBy = 'updated_at', sortOrder = 'desc' } = req.query;
+        const projects = await req.bridge.invoke('research:get-projects', {
+            status,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            sortBy,
+            sortOrder
+        });
+        res.json({ success: true, data: projects });
+    } catch (error) {
+        console.error('Error getting projects:', error);
+        res.status(500).json({ error: 'Failed to get projects' });
+    }
+});
+
+router.post('/projects', async (req, res) => {
+    try {
+        const projectData = req.body;
+        
+        // Validate required fields
+        if (!projectData.name) {
+            return res.status(400).json({ error: 'Project name is required' });
+        }
+        
+        const project = await req.bridge.invoke('research:create-project', projectData);
+        res.status(201).json({ success: true, data: project });
+    } catch (error) {
+        console.error('Error creating project:', error);
+        res.status(500).json({ error: 'Failed to create project' });
+    }
+});
+
+router.get('/projects/:projectId', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const project = await req.bridge.invoke('research:get-project', { projectId });
+        
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        res.json({ success: true, data: project });
+    } catch (error) {
+        console.error('Error getting project:', error);
+        res.status(500).json({ error: 'Failed to get project' });
+    }
+});
+
+router.put('/projects/:projectId', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const updates = req.body;
+        
+        const project = await req.bridge.invoke('research:update-project', { projectId, updates });
+        
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        res.json({ success: true, data: project });
+    } catch (error) {
+        console.error('Error updating project:', error);
+        res.status(500).json({ error: 'Failed to update project' });
+    }
+});
+
+router.delete('/projects/:projectId', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const success = await req.bridge.invoke('research:delete-project', { projectId });
+        
+        if (!success) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        res.json({ success: true, message: 'Project deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting project:', error);
+        res.status(500).json({ error: 'Failed to delete project' });
+    }
+});
+
+router.post('/projects/:projectId/set-current', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const project = await req.bridge.invoke('research:set-current-project', { projectId });
+        
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        res.json({ success: true, data: project });
+    } catch (error) {
+        console.error('Error setting current project:', error);
+        res.status(500).json({ error: 'Failed to set current project' });
+    }
+});
+
+router.get('/projects/:projectId/sessions', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const sessions = await req.bridge.invoke('research:get-project-sessions', { projectId });
+        res.json({ success: true, data: sessions });
+    } catch (error) {
+        console.error('Error getting project sessions:', error);
+        res.status(500).json({ error: 'Failed to get project sessions' });
+    }
+});
+
+router.get('/projects/:projectId/analytics', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const { timeframe = '7d' } = req.query;
+        const analytics = await req.bridge.invoke('research:get-project-analytics', {
+            projectId,
+            timeframe
+        });
+        res.json({ success: true, data: analytics });
+    } catch (error) {
+        console.error('Error getting project analytics:', error);
+        res.status(500).json({ error: 'Failed to get project analytics' });
+    }
+});
+
+router.get('/projects/:projectId/progress', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const progress = await req.bridge.invoke('research:get-project-progress', { projectId });
+        res.json({ success: true, data: progress });
+    } catch (error) {
+        console.error('Error getting project progress:', error);
+        res.status(500).json({ error: 'Failed to get project progress' });
+    }
+});
+
+// ========== ZOTERO INTEGRATION ENDPOINTS ==========
+
+router.post('/projects/:projectId/sync-zotero', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const zoteroData = await req.bridge.invoke('research:sync-project-zotero', { projectId });
+        res.json({ success: true, data: zoteroData });
+    } catch (error) {
+        console.error('Error syncing with Zotero:', error);
+        res.status(500).json({ error: 'Failed to sync with Zotero' });
+    }
+});
+
+router.post('/projects/:projectId/link-zotero', async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const { zoteroKey } = req.body;
+        
+        if (!zoteroKey) {
+            return res.status(400).json({ error: 'Zotero key is required' });
+        }
+        
+        const project = await req.bridge.invoke('research:link-project-zotero', {
+            projectId,
+            zoteroKey
+        });
+        
+        res.json({ success: true, data: project });
+    } catch (error) {
+        console.error('Error linking project to Zotero:', error);
+        res.status(500).json({ error: 'Failed to link project to Zotero' });
+    }
+});
+
+// ========== ANALYTICS ENDPOINTS ==========
+
+router.get('/analytics', async (req, res) => {
+    try {
+        const { timeframe = '7d', projectId } = req.query;
+        const analytics = await req.bridge.invoke('research:get-analytics', {
+            timeframe,
+            projectId: projectId || null
+        });
+        res.json({ success: true, data: analytics });
+    } catch (error) {
+        console.error('Error getting analytics:', error);
+        res.status(500).json({ error: 'Failed to get analytics' });
+    }
+});
+
+router.get('/analytics/productivity-trends', async (req, res) => {
+    try {
+        const { timeframe = '30d' } = req.query;
+        const trends = await req.bridge.invoke('research:get-productivity-trends', { timeframe });
+        res.json({ success: true, data: trends });
+    } catch (error) {
+        console.error('Error getting productivity trends:', error);
+        res.status(500).json({ error: 'Failed to get productivity trends' });
+    }
+});
+
+router.get('/sessions/:sessionId/analytics', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const analytics = await req.bridge.invoke('research:get-session-analytics', { sessionId });
+        
+        if (!analytics) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        res.json({ success: true, data: analytics });
+    } catch (error) {
+        console.error('Error getting session analytics:', error);
+        res.status(500).json({ error: 'Failed to get session analytics' });
+    }
+});
+
+// ========== REAL-TIME UPDATES ENDPOINT ==========
+
+router.get('/updates', async (req, res) => {
+    try {
+        const { since = 0 } = req.query;
+        const updates = await req.bridge.invoke('research:get-recent-updates', {
+            since: parseInt(since)
+        });
+        res.json({ success: true, data: updates });
+    } catch (error) {
+        console.error('Error getting recent updates:', error);
+        res.status(500).json({ error: 'Failed to get recent updates' });
+    }
+});
+
+// ========== SETTINGS AND CONFIGURATION ==========
+
+router.post('/settings/capture-interval', async (req, res) => {
+    try {
+        const { intervalMinutes } = req.body;
+        
+        if (!intervalMinutes || intervalMinutes < 1 || intervalMinutes > 60) {
+            return res.status(400).json({ error: 'Interval must be between 1 and 60 minutes' });
+        }
+        
+        await req.bridge.invoke('research:set-capture-interval', { intervalMinutes });
+        res.json({ success: true, message: 'Capture interval updated' });
+    } catch (error) {
+        console.error('Error setting capture interval:', error);
+        res.status(500).json({ error: 'Failed to set capture interval' });
+    }
+});
+
 module.exports = router;
