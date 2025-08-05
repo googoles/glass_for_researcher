@@ -231,7 +231,7 @@ export default function AIDashboard() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">AI Analysis Dashboard</h1>
           <p className="text-gray-600">
-            Advanced productivity insights powered by AI analysis of your work patterns
+            Research insights and analysis powered by AI
           </p>
         </div>
 
@@ -250,22 +250,14 @@ export default function AIDashboard() {
         {/* AI Status and Controls */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">AI Status</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">AI Analysis</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-600">Status:</span>
-                <span className="text-green-600 font-medium">Active</span>
+                <span className="text-green-600 font-medium">Ready</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Analyses:</span>
-                <span className="font-medium">{aiStatus?.analysisHistory || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Last Analysis:</span>
-                <span className="font-medium">
-                  {aiStatus?.lastAnalysis ? 
-                    new Date(aiStatus.lastAnalysis).toLocaleTimeString() : 'None'}
-                </span>
+              <div className="text-sm text-gray-500">
+                Configure your research tracking to get AI-powered insights
               </div>
             </div>
           </div>
@@ -316,35 +308,29 @@ export default function AIDashboard() {
         </div>
 
         {/* Productivity Statistics */}
-        {productivityStats && (
+        {productivityStats && productivityStats.total_analyses > 0 && (
           <div className="bg-white rounded-lg shadow p-6 mb-8">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Productivity Statistics ({selectedTimeframe})
+              Research Analytics ({selectedTimeframe})
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-900">
                   {productivityStats.total_analyses}
                 </div>
-                <div className="text-sm text-gray-600">Total Analyses</div>
+                <div className="text-sm text-gray-600">Analyses</div>
               </div>
               <div className="text-center">
                 <div className={`text-2xl font-bold ${getScoreColor(productivityStats.avg_productivity)}`}>
                   {productivityStats.avg_productivity.toFixed(1)}
                 </div>
-                <div className="text-sm text-gray-600">Average Score</div>
+                <div className="text-sm text-gray-600">Average</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">
                   {productivityStats.max_productivity.toFixed(1)}
                 </div>
-                <div className="text-sm text-gray-600">Peak Score</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">
-                  {productivityStats.min_productivity.toFixed(1)}
-                </div>
-                <div className="text-sm text-gray-600">Lowest Score</div>
+                <div className="text-sm text-gray-600">Peak</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
@@ -357,55 +343,51 @@ export default function AIDashboard() {
         )}
 
         {/* Recent Analysis History */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Analysis History</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Score
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Activity
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Focus
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Applications
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {analysisHistory.slice(0, 10).map((item, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(item.timestamp).toLocaleTimeString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-sm font-medium ${getScoreColor(item.productivity_score)}`}>
-                        {item.productivity_score.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.activity_type}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.focus_quality}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.applications?.slice(0, 2).join(', ') || 'N/A'}
-                    </td>
+        {analysisHistory.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6 mb-8">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Analysis History</h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Score
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Activity
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Focus
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {analysisHistory.slice(0, 10).map((item, index) => (
+                    <tr key={index}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(item.timestamp).toLocaleTimeString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-medium ${getScoreColor(item.productivity_score)}`}>
+                          {item.productivity_score.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.activity_type}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.focus_quality}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* AI Insights */}
         {insights && !insights.error && (
@@ -417,7 +399,7 @@ export default function AIDashboard() {
               Based on {insights.dataPoints} data points
             </div>
             
-            {insights.insights?.personalizedRecommendations && (
+            {insights.insights?.personalizedRecommendations && Array.isArray(insights.insights.personalizedRecommendations) && (
               <div className="mb-6">
                 <h4 className="font-medium text-gray-900 mb-2">Personalized Recommendations</h4>
                 <ul className="space-y-2">

@@ -207,6 +207,16 @@ const initializeApiUrl = async () => {
   apiUrlInitialized = true;
 };
 
+// Ensure API is initialized before any calls
+const ensureApiInitialized = async () => {
+  if (!apiUrlInitialized) {
+    if (!initializationPromise) {
+      initializationPromise = initializeApiUrl();
+    }
+    await initializationPromise;
+  }
+};
+
 if (typeof window !== 'undefined') {
   initializationPromise = initializeApiUrl();
 }
@@ -270,13 +280,8 @@ export const getApiHeaders = (): HeadersInit => {
 
 
 export const apiCall = async (path: string, options: RequestInit = {}) => {
-  if (!apiUrlInitialized && initializationPromise) {
-    await initializationPromise;
-  }
-  
-  if (!apiUrlInitialized) {
-    await initializeApiUrl();
-  }
+  // Ensure API URL is initialized before making any calls
+  await ensureApiInitialized();
   
   const url = `${API_ORIGIN}${path}`;
   console.log('🌐 apiCall (Local Mode):', {
@@ -295,7 +300,13 @@ export const apiCall = async (path: string, options: RequestInit = {}) => {
     },
     ...options,
   };
-  return fetch(url, defaultOpts);
+  
+  try {
+    return await fetch(url, defaultOpts);
+  } catch (error) {
+    console.error('API call failed:', error);
+    throw error;
+  }
 };
 
 
@@ -306,9 +317,9 @@ export const searchConversations = async (query: string): Promise<Session[]> => 
 
   if (isFirebaseMode()) {
     const sessions = await getSessions();
-    return sessions.filter(session => 
+    return Array.isArray(sessions) ? sessions.filter(session => 
       session.title.toLowerCase().includes(query.toLowerCase())
-    );
+    ) : [];
   } else {
     const response = await apiCall(`/api/conversations/search?q=${encodeURIComponent(query)}`, {
       method: 'GET',
@@ -316,19 +327,28 @@ export const searchConversations = async (query: string): Promise<Session[]> => 
     if (!response.ok) {
       throw new Error('Failed to search conversations');
     }
-    return response.json();
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
   }
 };
 
-export const getSessions = async (): Promise<Session[]> => {
+export const getSessions = async (options?: { timeRange?: string; limit?: number; offset?: number }): Promise<Session[]> => {
   if (isFirebaseMode()) {
     const uid = firebaseAuth.currentUser!.uid;
     const firestoreSessions = await FirestoreSessionService.getSessions(uid);
-    return firestoreSessions.map(session => convertFirestoreSession(session, uid));
+    return Array.isArray(firestoreSessions) ? firestoreSessions.map(session => convertFirestoreSession(session, uid)) : [];
   } else {
-    const response = await apiCall(`/api/conversations`, { method: 'GET' });
+    const queryParams = new URLSearchParams();
+    if (options?.timeRange) queryParams.append('timeRange', options.timeRange);
+    if (options?.limit) queryParams.append('limit', options.limit.toString());
+    if (options?.offset) queryParams.append('offset', options.offset.toString());
+    
+    const queryString = queryParams.toString();
+    const response = await apiCall(`/api/conversations${queryString ? `?${queryString}` : ''}`, { method: 'GET' });
     if (!response.ok) throw new Error('Failed to fetch sessions');
-    return response.json();
+    const data = await response.json();
+    // Ensure we always return an array
+    return Array.isArray(data) ? data : [];
   }
 };
 
@@ -349,8 +369,8 @@ export const getSessionDetails = async (sessionId: string): Promise<SessionDetai
 
     return {
       session: convertFirestoreSession({ id: sessionId, ...session }, uid),
-      transcripts: transcripts.map(t => ({ ...convertFirestoreTranscript(t), session_id: sessionId })),
-      ai_messages: aiMessages.map(m => ({ ...convertFirestoreAiMessage(m), session_id: sessionId })),
+      transcripts: Array.isArray(transcripts) ? transcripts.map(t => ({ ...convertFirestoreTranscript(t), session_id: sessionId })) : [],
+      ai_messages: Array.isArray(aiMessages) ? aiMessages.map(m => ({ ...convertFirestoreAiMessage(m), session_id: sessionId })) : [],
       summary: summary ? convertFirestoreSummary(summary, sessionId) : null
     };
   } else {
@@ -482,12 +502,13 @@ export const getPresets = async (): Promise<PromptPreset[]> => {
   if (isFirebaseMode()) {
     const uid = firebaseAuth.currentUser!.uid;
     const firestorePresets = await FirestorePromptPresetService.getPresets(uid);
-    return firestorePresets.map(preset => convertFirestorePreset(preset, uid));
+    return Array.isArray(firestorePresets) ? firestorePresets.map(preset => convertFirestorePreset(preset, uid)) : [];
   } else {
     try {
       const response = await apiCall(`/api/presets`, { method: 'GET' });
       if (!response.ok) throw new Error('Failed to fetch presets');
-      return response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
     } catch (error) {
       console.log('Backend not available, using mock presets for development');
       // Return mock presets for development when backend is not running
@@ -615,14 +636,21 @@ export const getBatchData = async (includes: ('profile' | 'presets' | 'sessions'
     const results = await Promise.all(promises);
     
     results.forEach(({ type, data }) => {
-      result[type as keyof BatchData] = data;
+      if (type === 'sessions') {
+        result.sessions = Array.isArray(data) ? data : [];
+      } else if (type === 'presets') {
+        result.presets = Array.isArray(data) ? data : [];
+      } else if (type === 'profile') {
+        result.profile = data;
+      }
     });
     
     return result;
   } else {
     const response = await apiCall(`/api/user/batch?include=${includes.join(',')}`, { method: 'GET' });
     if (!response.ok) throw new Error('Failed to fetch batch data');
-    return response.json();
+    const data = await response.json();
+    return data || {};
   }
 };
 

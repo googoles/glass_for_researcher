@@ -62,35 +62,34 @@ export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter'>('week')
   const [isLoading, setIsLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const fetchAnalyticsData = useCallback(async () => {
+  const fetchAnalyticsData = useCallback(async (signal?: AbortSignal) => {
     try {
-      // Fetch sessions from existing API
-      const sessions = await getSessions()
+      setError(null)
+      
+      // Fetch sessions with server-side filtering for better performance
+      const sessionsResponse = await getSessions({ timeRange, limit: 100 })
+      // Ensure sessions is always an array
+      const sessions = Array.isArray(sessionsResponse) ? sessionsResponse : []
       
       // Fetch productivity stats if available
       let productivityStats = null
       try {
-        const response = await apiCall(`/api/research/analysis/productivity-stats/${timeRange}`)
+        const response = await apiCall(`/api/research/analysis/productivity-stats/${timeRange}`, {
+          signal
+        })
         if (response.ok) {
           productivityStats = await response.json()
         }
       } catch (error) {
         console.error('Failed to fetch productivity stats:', error)
+        // Continue without productivity stats rather than failing entirely
       }
 
-      // Calculate analytics from sessions data
-      const now = new Date()
-      const timeRangeMs = {
-        week: 7 * 24 * 60 * 60 * 1000,
-        month: 30 * 24 * 60 * 60 * 1000,
-        quarter: 90 * 24 * 60 * 60 * 1000
-      }
-
-      const cutoffTime = now.getTime() - timeRangeMs[timeRange]
-      const filteredSessions = sessions.filter(session => 
-        session.started_at * 1000 >= cutoffTime
-      )
+      // Sessions are already filtered by backend, no need to filter again
+      // This improves performance significantly
+      const filteredSessions = sessions
 
       const totalActivities = filteredSessions.length
       const totalTime = filteredSessions.reduce((sum, session) => {
@@ -109,19 +108,30 @@ export default function AnalyticsPage() {
         creative: Math.floor(totalActivities * 0.05)
       }
 
-      // Generate daily stats
+      // Generate daily stats more efficiently
+      const now = new Date()
+      const daysToShow = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 90
       const dailyStats = []
-      for (let i = 6; i >= 0; i--) {
+      
+      // Pre-group sessions by date for better performance
+      const sessionsByDate = new Map()
+      filteredSessions.forEach(session => {
+        const sessionDate = new Date(session.started_at * 1000)
+        const dateKey = sessionDate.toISOString().split('T')[0]
+        if (!sessionsByDate.has(dateKey)) {
+          sessionsByDate.set(dateKey, 0)
+        }
+        sessionsByDate.set(dateKey, sessionsByDate.get(dateKey) + 1)
+      })
+      
+      // Generate stats for recent days only
+      for (let i = Math.min(daysToShow - 1, 6); i >= 0; i--) {
         const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / 1000
-        const dayEnd = dayStart + 24 * 60 * 60
-
-        const dayActivities = filteredSessions.filter(session => 
-          session.started_at >= dayStart && session.started_at < dayEnd
-        ).length
+        const dateKey = date.toISOString().split('T')[0]
+        const dayActivities = sessionsByDate.get(dateKey) || 0
 
         dailyStats.push({
-          date: date.toISOString().split('T')[0],
+          date: dateKey,
           activities: dayActivities,
           productivity: Math.floor(Math.random() * 30) + 70, // Mock productivity score
           focusTime: Math.floor(Math.random() * 4) + 2 // Mock focus time in hours
@@ -163,7 +173,10 @@ export default function AnalyticsPage() {
 
       setAnalyticsData(analytics)
     } catch (error) {
-      console.error('Failed to fetch analytics data:', error)
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Failed to fetch analytics data:', error)
+        setError('Failed to load analytics data. Please try again.')
+      }
     }
   }, [timeRange])
 
@@ -174,12 +187,24 @@ export default function AnalyticsPage() {
   }, [fetchAnalyticsData])
 
   useEffect(() => {
+    const abortController = new AbortController()
+    
     const loadData = async () => {
       setIsLoading(true)
-      await fetchAnalyticsData()
-      setIsLoading(false)
+      try {
+        await fetchAnalyticsData(abortController.signal)
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsLoading(false)
+        }
+      }
     }
+    
     loadData()
+    
+    return () => {
+      abortController.abort()
+    }
   }, [fetchAnalyticsData])
 
   const formatDuration = (seconds: number) => {
@@ -206,6 +231,24 @@ export default function AnalyticsPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading analytics...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4 p-4 bg-red-50 rounded-lg">
+            <p className="text-red-600 mb-2">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -338,8 +381,8 @@ export default function AnalyticsPage() {
               <BarChart3 className="h-5 w-5 text-gray-600" />
             </div>
             <div className="space-y-4">
-              {analyticsData.dailyStats.map((day, index) => {
-                const maxActivities = Math.max(...analyticsData.dailyStats.map(d => d.activities))
+              {Array.isArray(analyticsData.dailyStats) && analyticsData.dailyStats.map((day, index) => {
+                const maxActivities = Math.max(...(Array.isArray(analyticsData.dailyStats) ? analyticsData.dailyStats : []).map(d => d.activities))
                 const width = maxActivities > 0 ? (day.activities / maxActivities) * 100 : 0
                 return (
                   <div key={day.date} className="flex items-center space-x-4">
@@ -376,7 +419,7 @@ export default function AnalyticsPage() {
               <PieChart className="h-5 w-5 text-gray-600" />
             </div>
             <div className="space-y-4">
-              {Object.entries(analyticsData.categoryBreakdown).map(([key, count]) => {
+              {Object.entries(analyticsData.categoryBreakdown || {}).map(([key, count]) => {
                 const category = ACTIVITY_CATEGORIES[key as keyof typeof ACTIVITY_CATEGORIES]
                 const IconComponent = category.icon
                 const total = Object.values(analyticsData.categoryBreakdown).reduce((sum, val) => sum + val, 0)
@@ -419,7 +462,7 @@ export default function AnalyticsPage() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {analyticsData.achievements.map((achievement, index) => (
+            {Array.isArray(analyticsData.achievements) && analyticsData.achievements.map((achievement, index) => (
               <div key={index} className={`p-4 rounded-lg border-2 transition-all ${
                 achievement.earned 
                   ? 'border-green-200 bg-green-50' 

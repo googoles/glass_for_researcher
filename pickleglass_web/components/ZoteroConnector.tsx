@@ -143,7 +143,9 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
 
       if (response.ok) {
         const data = await response.json()
-        const formattedPapers = data.map((item: any) => ({
+        // Ensure data is an array before mapping
+        const papers = Array.isArray(data) ? data : []
+        const formattedPapers = papers.map((item: any) => ({
           key: item.key,
           title: item.data.title || 'Untitled',
           creators: item.data.creators || [],
@@ -335,7 +337,7 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
               <h4 className="font-medium text-gray-900 mb-1">Selected Paper</h4>
               <p className="text-sm text-gray-700">{selectedPaper.title}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {selectedPaper.creators.map(c => `${c.firstName} ${c.lastName}`).join(', ')}
+                {Array.isArray(selectedPaper.creators) ? selectedPaper.creators.map(c => `${c.firstName} ${c.lastName}`).join(', ') : ''}
               </p>
             </div>
             <button
@@ -372,13 +374,13 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
                     {paper.title}
                   </h4>
                   <p className="text-sm text-gray-600 mb-1">
-                    {paper.creators.slice(0, 3).map(c => `${c.firstName} ${c.lastName}`).join(', ')}
+                    {Array.isArray(paper.creators) ? paper.creators.slice(0, 3).map(c => `${c.firstName} ${c.lastName}`).join(', ') : ''}
                     {paper.creators.length > 3 && ' et al.'}
                   </p>
                   <div className="flex items-center space-x-4 text-xs text-gray-500">
                     <span>{paper.date}</span>
                     {paper.tags && paper.tags.length > 0 && (
-                      <span>{paper.tags.slice(0, 3).map(t => t.tag).join(', ')}</span>
+                      <span>{Array.isArray(paper.tags) ? paper.tags.slice(0, 3).map(t => t.tag).join(', ') : ''}</span>
                     )}
                   </div>
                 </div>

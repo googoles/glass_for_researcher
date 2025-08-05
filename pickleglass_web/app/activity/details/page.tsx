@@ -134,7 +134,7 @@ function SessionDetailsContent() {
                             <div className="mt-4">
                                 <h3 className="font-semibold text-gray-700 mb-2">Key Points:</h3>
                                 <ul className="list-disc list-inside space-y-1 text-gray-600">
-                                    {JSON.parse(sessionDetails.summary.bullet_json).map((point: string, index: number) => (
+                                    {(Array.isArray(JSON.parse(sessionDetails.summary.bullet_json)) ? JSON.parse(sessionDetails.summary.bullet_json) : []).map((point: string, index: number) => (
                                         <li key={index}>{point}</li>
                                     ))}
                                 </ul>
@@ -145,7 +145,7 @@ function SessionDetailsContent() {
                             <div className="mt-4">
                                 <h3 className="font-semibold text-gray-700 mb-2">Action Items:</h3>
                                 <ul className="list-disc list-inside space-y-1 text-gray-600">
-                                    {JSON.parse(sessionDetails.summary.action_json).map((action: string, index: number) => (
+                                    {(Array.isArray(JSON.parse(sessionDetails.summary.action_json)) ? JSON.parse(sessionDetails.summary.action_json) : []).map((action: string, index: number) => (
                                         <li key={index}>{action}</li>
                                     ))}
                                 </ul>
@@ -157,7 +157,7 @@ function SessionDetailsContent() {
                 {sessionDetails.transcripts && sessionDetails.transcripts.length > 0 && (
                     <Section title="Listen: Transcript">
                         <div className="space-y-3">
-                            {sessionDetails.transcripts.map((item) => (
+                            {Array.isArray(sessionDetails.transcripts) && sessionDetails.transcripts.map((item) => (
                                 <p key={item.id} className="text-gray-700">
                                     <span className="font-semibold capitalize">{item.speaker}: </span>
                                     {item.text}
@@ -170,7 +170,7 @@ function SessionDetailsContent() {
                 {askMessages.length > 0 && (
                     <Section title="Ask: Q&A">
                         <div className="space-y-4">
-                            {askMessages.map((item) => (
+                            {Array.isArray(askMessages) && askMessages.map((item) => (
                                 <div key={item.id} className={`p-3 rounded-lg ${item.role === 'user' ? 'bg-gray-100' : 'bg-blue-50'}`}>
                                     <p className="font-semibold capitalize text-sm text-gray-600 mb-1">{item.role === 'user' ? 'You' : 'AI'}</p>
                                     <p className="text-gray-800 whitespace-pre-wrap">{item.content}</p>

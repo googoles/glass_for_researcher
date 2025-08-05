@@ -205,7 +205,7 @@ export default function ActivityTimelineChart({
           >
             All
           </button>
-          {Object.entries(timelineData.categories).map(([category, time]) => {
+          {Object.entries(timelineData.categories || {}).map(([category, time]) => {
             const IconComponent = categoryIcons[category as keyof typeof categoryIcons];
             return (
               <button
@@ -237,7 +237,7 @@ export default function ActivityTimelineChart({
 
       {/* Timeline */}
       <div className="space-y-3 mb-6">
-        {filteredActivities.map((activity) => {
+        {Array.isArray(filteredActivities) && filteredActivities.map((activity) => {
           const IconComponent = categoryIcons[activity.category];
           const position = getTimelinePosition(activity.start_time, activity.end_time!);
           

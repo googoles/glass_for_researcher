@@ -12,27 +12,43 @@ export default function PersonalizePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    
     const fetchData = async () => {
       try {
         setLoading(true);
+        setError(null);
         const presetsData = await getPresets();
-        setAllPresets(presetsData);
         
-        if (presetsData.length > 0) {
-          const firstUserPreset = presetsData.find(p => p.is_default === 0) || presetsData[0];
-          setSelectedPreset(firstUserPreset);
-          setEditorContent(firstUserPreset.prompt);
+        if (!abortController.signal.aborted) {
+          setAllPresets(Array.isArray(presetsData) ? presetsData : []);
+          
+          if (presetsData.length > 0) {
+            const firstUserPreset = presetsData.find(p => p.is_default === 0) || presetsData[0];
+            setSelectedPreset(firstUserPreset);
+            setEditorContent(firstUserPreset.prompt);
+          }
         }
       } catch (error) {
-        console.error("Failed to fetch presets:", error);
+        if (!abortController.signal.aborted) {
+          console.error("Failed to fetch presets:", error);
+          setError('Failed to load presets. Please check your connection and try again.');
+        }
       } finally {
-        setLoading(false);
+        if (!abortController.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
     
     fetchData();
+    
+    return () => {
+      abortController.abort();
+    };
   }, []);
 
   const handlePresetClick = (preset: PromptPreset) => {
@@ -74,7 +90,7 @@ export default function PersonalizePage() {
       setIsDirty(false);
     } catch (error) {
       console.error("Save failed:", error);
-      alert("Failed to save preset. See console for details.");
+      setError('Failed to save preset. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -150,7 +166,28 @@ export default function PersonalizePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mx-auto mb-4"></div>
+          <div className="text-gray-500">Loading presets...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !allPresets.length) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="mb-4 p-4 bg-red-50 rounded-lg max-w-md">
+            <p className="text-red-600 mb-3">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -159,6 +196,11 @@ export default function PersonalizePage() {
     <div className="flex flex-col h-full">
       <div className="bg-white border-b border-gray-100">
         <div className="px-8 pt-8 pb-6">
+          {error && allPresets.length > 0 && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">{error}</p>
+            </div>
+          )}
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm text-gray-500 mb-2">Presets</p>
