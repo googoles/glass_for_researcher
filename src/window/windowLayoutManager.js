@@ -93,6 +93,31 @@ class WindowLayoutManager {
         return { x: Math.round(clampedX), y: Math.round(clampedY) };
     }
 
+    calculateMoreActionsWindowPosition() {
+        const header = this.windowPool.get('header');
+        const moreActions = this.windowPool.get('more-actions');
+
+        if (!header || header.isDestroyed() || !moreActions || moreActions.isDestroyed()) {
+            return null;
+        }
+
+        const headerBounds = header.getBounds();
+        const moreActionsBounds = moreActions.getBounds();
+        const display = getCurrentDisplay(header);
+        const { x: workAreaX, y: workAreaY, width: screenWidth, height: screenHeight } = display.workArea;
+
+        const PAD = 5;
+        const buttonPadding = 140; // Position for More actions button (slightly left of Settings)
+
+        const x = headerBounds.x + headerBounds.width - moreActionsBounds.width + buttonPadding;
+        const y = headerBounds.y + headerBounds.height + PAD;
+
+        const clampedX = Math.max(workAreaX + 10, Math.min(workAreaX + screenWidth - moreActionsBounds.width - 10, x));
+        const clampedY = Math.max(workAreaY + 10, Math.min(workAreaY + screenHeight - moreActionsBounds.height - 10, y));
+
+        return { x: Math.round(clampedX), y: Math.round(clampedY) };
+    }
+
 
     calculateHeaderResize(header, { width, height }) {
         if (!header) return null;

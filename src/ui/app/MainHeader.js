@@ -5,6 +5,8 @@ export class MainHeader extends LitElement {
         isTogglingSession: { type: Boolean, state: true },
         shortcuts: { type: Object, state: true },
         listenSessionStatus: { type: String, state: true },
+        activityTrackingStatus: { type: Boolean, state: true },
+        isCapturing: { type: Boolean, state: true },
     };
 
     static styles = css`
@@ -205,6 +207,56 @@ export class MainHeader extends LitElement {
             background: rgba(255, 255, 255, 0.1);
         }
 
+        .actions-group {
+            -webkit-app-region: no-drag;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .divider {
+            width: 1px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 4px;
+        }
+
+        .more-actions {
+            position: relative;
+        }
+
+        .more-button {
+            -webkit-app-region: no-drag;
+            padding: 5px;
+            border-radius: 50%;
+            background: transparent;
+            transition: background 0.15s ease;
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .more-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .more-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3px;
+        }
+
+        .more-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+
+
         .ask-action {
             margin-left: 4px;
         }
@@ -289,16 +341,56 @@ export class MainHeader extends LitElement {
             width: 16px;
             height: 16px;
         }
+
+        .compact-button {
+            -webkit-app-region: no-drag;
+            height: 24px;
+            width: 24px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease;
+            position: relative;
+        }
+
+        .compact-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .compact-button svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .compact-button.capturing {
+            background: rgba(255, 165, 0, 0.2);
+        }
+
+        .compact-button.capturing:hover {
+            background: rgba(255, 165, 0, 0.3);
+        }
+
         /* ────────────────[ GLASS BYPASS ]─────────────── */
         :host-context(body.has-glass) .header,
         :host-context(body.has-glass) .listen-button,
         :host-context(body.has-glass) .header-actions,
-        :host-context(body.has-glass) .settings-button {
+        :host-context(body.has-glass) .settings-button,
+        :host-context(body.has-glass) .compact-button {
             background: transparent !important;
             filter: none !important;
             box-shadow: none !important;
             backdrop-filter: none !important;
         }
+        
+        :host-context(body.has-glass) .more-button {
+            background: transparent !important;
+        }
+        
         :host-context(body.has-glass) .icon-box {
             background: transparent !important;
             border: none !important;
@@ -313,7 +405,9 @@ export class MainHeader extends LitElement {
 
         :host-context(body.has-glass) .header-actions:hover,
         :host-context(body.has-glass) .settings-button:hover,
-        :host-context(body.has-glass) .listen-button:hover::before {
+        :host-context(body.has-glass) .listen-button:hover::before,
+        :host-context(body.has-glass) .compact-button:hover,
+        :host-context(body.has-glass) .more-button:hover {
             background: transparent !important;
         }
         :host-context(body.has-glass) * {
@@ -329,6 +423,8 @@ export class MainHeader extends LitElement {
         :host-context(body.has-glass) .listen-button,
         :host-context(body.has-glass) .header-actions,
         :host-context(body.has-glass) .settings-button,
+        :host-context(body.has-glass) .compact-button,
+        :host-context(body.has-glass) .more-button,
         :host-context(body.has-glass) .icon-box {
             border-radius: 0 !important;
         }
@@ -349,6 +445,8 @@ export class MainHeader extends LitElement {
         this.settingsHideTimer = null;
         this.isTogglingSession = false;
         this.listenSessionStatus = 'beforeSession';
+        this.activityTrackingStatus = false;
+        this.isCapturing = false;
         this.animationEndTimer = null;
         this.handleAnimationEnd = this.handleAnimationEnd.bind(this);
         this.handleMouseMove = this.handleMouseMove.bind(this);
@@ -492,6 +590,17 @@ export class MainHeader extends LitElement {
                 this.shortcuts = keybinds;
             };
             window.api.mainHeader.onShortcutsUpdated(this._shortcutListener);
+
+            // Activity tracking status listener
+            this._activityStatusListener = (event, status) => {
+                this.activityTrackingStatus = status.isTracking || false;
+            };
+            if (window.api.invoke) {
+                // Get initial activity tracking status
+                window.api.invoke('activity:get-tracking-status').then(status => {
+                    this.activityTrackingStatus = status.isTracking || false;
+                }).catch(err => console.warn('Failed to get activity status:', err));
+            }
         }
     }
 
@@ -574,6 +683,74 @@ export class MainHeader extends LitElement {
         }
     }
 
+    async _handleActivityTrackingToggle() {
+        if (this.wasJustDragged) return;
+
+        try {
+            if (window.api) {
+                const result = this.activityTrackingStatus 
+                    ? await window.api.invoke('activity:stop-tracking')
+                    : await window.api.invoke('activity:start-tracking');
+                
+                if (result.success) {
+                    this.activityTrackingStatus = !this.activityTrackingStatus;
+                }
+            }
+        } catch (error) {
+            console.error('IPC invoke for activity tracking failed:', error);
+        }
+    }
+
+    async _handleCaptureAndAnalyze() {
+        if (this.wasJustDragged || this.isCapturing) return;
+
+        this.isCapturing = true;
+        try {
+            if (window.api) {
+                const result = await window.api.invoke('activity:capture-screenshot');
+                if (result.success) {
+                    // Optionally show a brief success feedback
+                    setTimeout(() => {
+                        this.isCapturing = false;
+                    }, 1000);
+                } else {
+                    this.isCapturing = false;
+                }
+            }
+        } catch (error) {
+            console.error('IPC invoke for capture and analyze failed:', error);
+            this.isCapturing = false;
+        }
+    }
+
+    async _handleGenerateSummary() {
+        if (this.wasJustDragged) return;
+
+        try {
+            if (window.api) {
+                await window.api.invoke('activity:generate-insights', { timeframe: 'today' });
+                // Show summary in a notification or popup
+                console.log('Summary generated successfully');
+            }
+        } catch (error) {
+            console.error('IPC invoke for generate summary failed:', error);
+        }
+    }
+
+    showMoreActionsWindow(element) {
+        if (this.wasJustDragged) return;
+        if (window.api) {
+            window.api.mainHeader.showMoreActionsWindow();
+        }
+    }
+
+    hideMoreActionsWindow() {
+        if (this.wasJustDragged) return;
+        if (window.api) {
+            window.api.mainHeader.hideMoreActionsWindow();
+        }
+    }
+
 
     renderShortcut(accelerator) {
         if (!accelerator) return html``;
@@ -651,14 +828,50 @@ export class MainHeader extends LitElement {
                     </div>
                 </div>
 
-                <div class="header-actions" @click=${() => this._handleToggleAllWindowsVisibility()}>
-                    <div class="action-text">
-                        <div class="action-text-content">Show/Hide</div>
-                    </div>
-                    <div class="icon-container">
-                        ${this.renderShortcut(this.shortcuts.toggleVisibility)}
-                    </div>
+                <div class="divider"></div>
+
+                <div class="actions-group">
+                    <button 
+                        class="compact-button ${this.isCapturing ? 'capturing' : ''}"
+                        @click=${this._handleCaptureAndAnalyze}
+                        ?disabled=${this.isCapturing}
+                        title="Capture & Analyze Screen"
+                    >
+                        ${this.isCapturing
+                            ? html`
+                                <div class="loading-dots">
+                                    <span style="width: 3px; height: 3px;"></span>
+                                    <span style="width: 3px; height: 3px;"></span>
+                                    <span style="width: 3px; height: 3px;"></span>
+                                </div>
+                            `
+                            : html`
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="white" stroke-width="2" fill="none"/>
+                                    <circle cx="12" cy="13" r="4" stroke="white" stroke-width="2" fill="none"/>
+                                </svg>
+                            `}
+                    </button>
                 </div>
+
+                <button 
+                    class="more-button"
+                    @mouseenter=${(e) => this.showMoreActionsWindow(e.currentTarget)}
+                    @mouseleave=${() => this.hideMoreActionsWindow()}
+                    @click=${(e) => { 
+                        console.log('[MainHeader] More button CLICKED!'); 
+                        this.showMoreActionsWindow(e.currentTarget); 
+                    }}
+                    title="More actions"
+                >
+                    <div class="more-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="1" fill="white"/>
+                            <circle cx="19" cy="12" r="1" fill="white"/>
+                            <circle cx="5" cy="12" r="1" fill="white"/>
+                        </svg>
+                    </div>
+                </button>
 
                 <button 
                     class="settings-button"

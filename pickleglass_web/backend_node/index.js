@@ -33,6 +33,7 @@ function createApp(eventBridge) {
     app.use('/api/presets', require('./routes/presets'));
     app.use('/api/research', require('./routes/research'));
     app.use('/api/activity', require('./routes/activity'));
+    app.use('/api/credentials', require('./routes/credentials'));
 
     app.get('/api/sync/status', (req, res) => {
         res.json({

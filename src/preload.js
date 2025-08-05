@@ -112,6 +112,11 @@ contextBridge.exposeInMainWorld('api', {
     showSettingsWindow: () => ipcRenderer.send('show-settings-window'),
     hideSettingsWindow: () => ipcRenderer.send('hide-settings-window'),
     
+    // More Actions Window Management  
+    showMoreActionsWindow: () => ipcRenderer.send('show-more-actions-window'),
+    hideMoreActionsWindow: () => ipcRenderer.send('hide-more-actions-window'),
+    cancelHideMoreActionsWindow: () => ipcRenderer.send('cancel-hide-more-actions-window'),
+    
     // Generic invoke (for dynamic channel names)
     // invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
     sendListenButtonClick: (listenButtonText) => ipcRenderer.invoke('listen:changeSession', listenButtonText),
@@ -234,6 +239,12 @@ contextBridge.exposeInMainWorld('api', {
     toggleContentProtection: () => ipcRenderer.invoke('toggle-content-protection'),
     getCurrentShortcuts: () => ipcRenderer.invoke('settings:getCurrentShortcuts'),
     openShortcutSettingsWindow: () => ipcRenderer.invoke('shortcut:openShortcutSettingsWindow'),
+    
+    // Research Settings
+    setResearchProvider: (provider) => ipcRenderer.invoke('settings:set-research-provider', provider),
+    getResearchProvider: () => ipcRenderer.invoke('settings:get-research-provider'),
+    setResearchPrivacyMode: (enabled) => ipcRenderer.invoke('settings:set-research-privacy-mode', enabled),
+    getResearchPrivacyMode: () => ipcRenderer.invoke('settings:get-research-privacy-mode'),
     
     // Window Management
     moveWindowStep: (direction) => ipcRenderer.invoke('move-window-step', direction),

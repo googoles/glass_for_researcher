@@ -705,12 +705,14 @@ export class SettingsView extends LitElement {
         this.isLoading = true;
         try {
             // Load essential data first
-            const [userState, modelSettings, presets, contentProtection, shortcuts] = await Promise.all([
+            const [userState, modelSettings, presets, contentProtection, shortcuts, researchProvider, researchPrivacyMode] = await Promise.all([
                 window.api.settingsView.getCurrentUser(),
                 window.api.settingsView.getModelSettings(), // Facade call
                 window.api.settingsView.getPresets(),
                 window.api.settingsView.getContentProtectionStatus(),
-                window.api.settingsView.getCurrentShortcuts()
+                window.api.settingsView.getCurrentShortcuts(),
+                window.api.settingsView.getResearchProvider(),
+                window.api.settingsView.getResearchPrivacyMode()
             ]);
             
             if (userState && userState.isLoggedIn) this.firebaseUser = userState;
@@ -728,6 +730,9 @@ export class SettingsView extends LitElement {
             this.presets = presets || [];
             this.isContentProtectionOn = contentProtection;
             this.shortcuts = shortcuts || {};
+            this.selectedResearchProvider = researchProvider;
+            this.researchPrivacyMode = researchPrivacyMode;
+            
             if (this.presets.length > 0) {
                 const firstUserPreset = this.presets.find(p => p.is_default === 0);
                 if (firstUserPreset) this.selectedPreset = firstUserPreset;
@@ -996,9 +1001,7 @@ export class SettingsView extends LitElement {
         
         try {
             // Save the selection via IPC
-            if (window.api && window.api.settingsView.setResearchProvider) {
-                await window.api.settingsView.setResearchProvider(provider);
-            }
+            await window.api.settingsView.setResearchProvider(provider);
         } catch (error) {
             console.error('[SettingsView] Failed to save research provider:', error);
         }
@@ -1012,9 +1015,7 @@ export class SettingsView extends LitElement {
         
         try {
             // Save the privacy mode setting via IPC
-            if (window.api && window.api.settingsView.setResearchPrivacyMode) {
-                await window.api.settingsView.setResearchPrivacyMode(this.researchPrivacyMode);
-            }
+            await window.api.settingsView.setResearchPrivacyMode(this.researchPrivacyMode);
         } catch (error) {
             console.error('[SettingsView] Failed to save privacy mode:', error);
         }

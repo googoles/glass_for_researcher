@@ -35,6 +35,7 @@ let currentHeaderState = 'apikey';
 const windowPool = new Map();
 
 let settingsHideTimer = null;
+let moreActionsHideTimer = null;
 
 
 let layoutManager = null;
@@ -70,6 +71,18 @@ const hideSettingsWindow = () => {
 
 const cancelHideSettingsWindow = () => {
     internalBridge.emit('window:requestVisibility', { name: 'settings', visible: true });
+};
+
+const showMoreActionsWindow = () => {
+    internalBridge.emit('window:requestVisibility', { name: 'more-actions', visible: true });
+};
+
+const hideMoreActionsWindow = () => {
+    internalBridge.emit('window:requestVisibility', { name: 'more-actions', visible: false });
+};
+
+const cancelHideMoreActionsWindow = () => {
+    internalBridge.emit('window:requestVisibility', { name: 'more-actions', visible: true });
 };
 
 const moveWindowStep = (direction) => {
@@ -266,7 +279,7 @@ async function handleWindowVisibilityRequest(windowPool, layoutManager, movement
         return;
     }
 
-    if (name !== 'settings') {
+    if (name !== 'settings' && name !== 'more-actions') {
         const isCurrentlyVisible = win.isVisible();
         if (isCurrentlyVisible === shouldBeVisible) {
             console.log(`[WindowManager] Window '${name}' is already in the desired state.`);
@@ -316,6 +329,41 @@ async function handleWindowVisibilityRequest(windowPool, layoutManager, movement
                     win.hide();
                 }
                 settingsHideTimer = null;
+            }, 200);
+
+            win.__lockedByButton = false;
+        }
+        return;
+    }
+
+    if (name === 'more-actions') {
+        if (shouldBeVisible) {
+            // Cancel any pending hide operations
+            if (moreActionsHideTimer) {
+                clearTimeout(moreActionsHideTimer);
+                moreActionsHideTimer = null;
+            }
+            const position = layoutManager.calculateMoreActionsWindowPosition();
+            if (position) {
+                win.setBounds(position);
+                win.__lockedByButton = true;
+                win.show();
+                win.moveTop();
+                win.setAlwaysOnTop(true);
+            } else {
+                console.warn('[WindowManager] Could not calculate more actions window position.');
+            }
+        } else {
+            // Hide after a delay
+            if (moreActionsHideTimer) {
+                clearTimeout(moreActionsHideTimer);
+            }
+            moreActionsHideTimer = setTimeout(() => {
+                if (win && !win.isDestroyed()) {
+                    win.setAlwaysOnTop(false);
+                    win.hide();
+                }
+                moreActionsHideTimer = null;
             }, 200);
 
             win.__lockedByButton = false;
@@ -556,6 +604,40 @@ function createFeatureWindows(header, namesToCreate) {
                 break;
             }
 
+            // more-actions
+            case 'more-actions': {
+                const moreActions = new BrowserWindow({ ...commonChildOptions, width:240, maxHeight:400, parent:undefined });
+                moreActions.setContentProtection(isContentProtectionOn);
+                moreActions.setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true});
+                if (process.platform === 'darwin') {
+                    moreActions.setWindowButtonVisibility(false);
+                }
+                const moreActionsLoadOptions = { query: { view: 'more-actions' } };
+                if (!shouldUseLiquidGlass) {
+                    moreActions.loadFile(path.join(__dirname,'../ui/app/content.html'), moreActionsLoadOptions)
+                        .catch(console.error);
+                }
+                else {
+                    moreActionsLoadOptions.query.glass = 'true';
+                    moreActions.loadFile(path.join(__dirname,'../ui/app/content.html'), moreActionsLoadOptions)
+                        .catch(console.error);
+                    moreActions.webContents.once('did-finish-load', () => {
+                        const viewId = liquidGlass.addView(moreActions.getNativeWindowHandle());
+                        if (viewId !== -1) {
+                            liquidGlass.unstable_setVariant(viewId, liquidGlass.GlassMaterialVariant.bubbles);
+                            // liquidGlass.unstable_setScrim(viewId, 1);
+                            // liquidGlass.unstable_setSubdued(viewId, 1);
+                        }
+                    });
+                }
+                windowPool.set('more-actions', moreActions);  
+
+                if (!app.isPackaged) {
+                    moreActions.webContents.openDevTools({ mode: 'detach' });
+                }
+                break;
+            }
+
             case 'shortcut-settings': {
                 const shortcutEditor = new BrowserWindow({
                     ...commonChildOptions,
@@ -604,15 +686,20 @@ function createFeatureWindows(header, namesToCreate) {
         createFeatureWindow('listen');
         createFeatureWindow('ask');
         createFeatureWindow('settings');
+        createFeatureWindow('more-actions');
         createFeatureWindow('shortcut-settings');
     }
 }
 
 function destroyFeatureWindows() {
-    const featureWindows = ['listen','ask','settings','shortcut-settings'];
+    const featureWindows = ['listen','ask','settings','more-actions','shortcut-settings'];
     if (settingsHideTimer) {
         clearTimeout(settingsHideTimer);
         settingsHideTimer = null;
+    }
+    if (moreActionsHideTimer) {
+        clearTimeout(moreActionsHideTimer);
+        moreActionsHideTimer = null;
     }
     featureWindows.forEach(name=>{
         const win = windowPool.get(name);
@@ -716,7 +803,7 @@ function createWindows() {
     setupWindowController(windowPool, layoutManager, movementManager);
 
     if (currentHeaderState === 'main') {
-        createFeatureWindows(header, ['listen', 'ask', 'settings', 'shortcut-settings']);
+        createFeatureWindows(header, ['listen', 'ask', 'settings', 'more-actions', 'shortcut-settings']);
     }
 
     header.setContentProtection(isContentProtectionOn);
@@ -799,6 +886,9 @@ module.exports = {
     showSettingsWindow,
     hideSettingsWindow,
     cancelHideSettingsWindow,
+    showMoreActionsWindow,
+    hideMoreActionsWindow,
+    cancelHideMoreActionsWindow,
     openLoginPage,
     moveWindowStep,
     handleHeaderStateChanged,

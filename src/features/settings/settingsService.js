@@ -440,6 +440,77 @@ function notifyPresetUpdate(action, presetId, title = null) {
     windowNotificationManager.notifyRelevantWindows('presets-updated', data);
 }
 
+// Research settings functions
+async function setResearchProvider(provider) {
+    try {
+        const settings = await getSettings();
+        if (!settings.research) {
+            settings.research = {};
+        }
+        settings.research.provider = provider;
+        await saveSettings(settings);
+        console.log('[SettingsService] Research provider set to:', provider);
+        
+        // Notify research service of configuration change
+        try {
+            const researchService = require('../research/researchService');
+            await researchService.updateAIConfiguration();
+        } catch (error) {
+            console.warn('[SettingsService] Could not update research service configuration:', error.message);
+        }
+        
+        return { success: true };
+    } catch (error) {
+        console.error('[SettingsService] Failed to set research provider:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function getResearchProvider() {
+    try {
+        const settings = await getSettings();
+        return settings.research?.provider || 'gemini'; // Default to Gemini
+    } catch (error) {
+        console.error('[SettingsService] Failed to get research provider:', error);
+        return 'gemini';
+    }
+}
+
+async function setResearchPrivacyMode(enabled) {
+    try {
+        const settings = await getSettings();
+        if (!settings.research) {
+            settings.research = {};
+        }
+        settings.research.privacyMode = enabled;
+        await saveSettings(settings);
+        console.log('[SettingsService] Research privacy mode set to:', enabled);
+        
+        // Notify research service of privacy mode change
+        try {
+            const researchService = require('../research/researchService');
+            await researchService.updateAIConfiguration();
+        } catch (error) {
+            console.warn('[SettingsService] Could not update research service privacy mode:', error.message);
+        }
+        
+        return { success: true };
+    } catch (error) {
+        console.error('[SettingsService] Failed to set research privacy mode:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function getResearchPrivacyMode() {
+    try {
+        const settings = await getSettings();
+        return settings.research?.privacyMode !== false; // Default to true for privacy
+    } catch (error) {
+        console.error('[SettingsService] Failed to get research privacy mode:', error);
+        return true; // Default to privacy mode
+    }
+}
+
 module.exports = {
     initialize,
     cleanup,
@@ -463,5 +534,10 @@ module.exports = {
     // Ollama facade
     getOllamaStatus,
     ensureOllamaReady,
-    shutdownOllama
+    shutdownOllama,
+    // Research settings
+    setResearchProvider,
+    getResearchProvider,
+    setResearchPrivacyMode,
+    getResearchPrivacyMode
 };

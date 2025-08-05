@@ -14,6 +14,7 @@ const permissionService = require('../features/common/services/permissionService
 const encryptionService = require('../features/common/services/encryptionService');
 const activityService = require('../features/activity/activityService');
 const secureCredentialsService = require('../features/common/services/secureCredentialsService');
+const researchService = require('../features/research/researchService');
 
 module.exports = {
   // Renderer로부터의 요청을 수신하고 서비스로 전달

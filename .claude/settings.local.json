@@ -23,7 +23,10 @@
       "Bash(npm start)",
       "Bash(npm run setup:*)",
       "Bash(electron:*)",
-      "Bash(npx electron:*)"
+      "Bash(npx electron:*)",
+      "Bash(npm install:*)",
+      "Bash(grep:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

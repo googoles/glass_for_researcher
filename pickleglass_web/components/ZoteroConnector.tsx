@@ -36,16 +36,34 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
   const [userID, setUserID] = useState('')
   const [showSettings, setShowSettings] = useState(false)
 
-  // Load saved credentials
+  // Load saved credentials securely
   useEffect(() => {
-    const savedKey = localStorage.getItem('zotero_api_key')
-    const savedID = localStorage.getItem('zotero_user_id')
-    if (savedKey && savedID) {
-      setApiKey(savedKey)
-      setUserID(savedID)
-      setIsConnected(true)
-    }
+    loadSecureCredentials()
   }, [])
+
+  const loadSecureCredentials = async () => {
+    try {
+      const response = await fetch('/api/credentials/zotero/for-api')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.credentials) {
+          setApiKey(data.credentials.apiKey)
+          setUserID(data.credentials.zoteroUserId)
+          setIsConnected(true)
+        }
+      }
+    } catch (error) {
+      console.warn('Could not load secure credentials:', error)
+      // Fallback to localStorage for development/testing
+      const savedKey = localStorage.getItem('zotero_api_key')
+      const savedID = localStorage.getItem('zotero_user_id')
+      if (savedKey && savedID) {
+        setApiKey(savedKey)
+        setUserID(savedID)
+        setIsConnected(true)
+      }
+    }
+  }
 
   const connectToZotero = async () => {
     if (!apiKey || !userID) {
@@ -69,8 +87,32 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
       )
 
       if (response.ok) {
-        localStorage.setItem('zotero_api_key', apiKey)
-        localStorage.setItem('zotero_user_id', userID)
+        // Store credentials securely
+        try {
+          const storeResponse = await fetch('/api/credentials/zotero', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              apiKey,
+              zoteroUserId: userID
+            })
+          })
+          
+          if (storeResponse.ok) {
+            console.log('Credentials stored securely')
+          } else {
+            console.warn('Failed to store credentials securely, using localStorage fallback')
+            localStorage.setItem('zotero_api_key', apiKey)
+            localStorage.setItem('zotero_user_id', userID)
+          }
+        } catch (error) {
+          console.warn('Secure storage failed, using localStorage fallback:', error)
+          localStorage.setItem('zotero_api_key', apiKey)
+          localStorage.setItem('zotero_user_id', userID)
+        }
+        
         setIsConnected(true)
         setShowSettings(false)
         await loadPapers()
@@ -131,15 +173,35 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
     }
   }
 
-  const disconnect = () => {
+  const disconnectFromZotero = async () => {
+    try {
+      // Remove credentials securely
+      const response = await fetch('/api/credentials/zotero', {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        console.log('Credentials removed securely')
+      } else {
+        console.warn('Failed to remove credentials securely, clearing localStorage')
+      }
+    } catch (error) {
+      console.warn('Secure removal failed, clearing localStorage:', error)
+    }
+    
+    // Clear localStorage as fallback
     localStorage.removeItem('zotero_api_key')
     localStorage.removeItem('zotero_user_id')
+    
+    // Reset state
     setApiKey('')
     setUserID('')
     setIsConnected(false)
     setPapers([])
     setSelectedPaper(null)
+    setError(null)
   }
+
 
   if (!isConnected || showSettings) {
     return (
@@ -255,6 +317,13 @@ export default function ZoteroConnector({ onPaperSelected }: ZoteroConnectorProp
             title="Settings"
           >
             <Settings className="h-5 w-5" />
+          </button>
+          <button
+            onClick={disconnectFromZotero}
+            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Disconnect from Zotero"
+          >
+            Disconnect
           </button>
         </div>
       </div>
