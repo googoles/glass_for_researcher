@@ -28,6 +28,12 @@ class Config {
             enableFileBasedCommunication: false,
             enableSQLiteStorage: true,
             
+            // Activity Tracking Settings
+            activityCaptureInterval: 15, // minutes
+            enableAutoCapture: true,
+            enableManualCaptureNotifications: true,
+            enableActivitySmartAnalysis: true,
+            
             logLevel: 'info',
             enableDebugLogging: false
         };

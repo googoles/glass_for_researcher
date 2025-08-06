@@ -75,6 +75,8 @@ class ListenService {
                     if (listenWindow && !listenWindow.isDestroyed()) {
                         listenWindow.webContents.send('session-state-changed', { isActive: false });
                     }
+                    // Create activity record for stopped session
+                    await this._createListenActivity('stopped');
                     break;
         
                 case 'Done':
@@ -144,6 +146,9 @@ class ListenService {
             
             // Reset conversation history
             this.summaryService.resetConversationHistory();
+
+            // Create activity record for this listen session
+            await this._createListenActivity('started');
 
             console.log('New conversation session started:', this.currentSessionId);
             return true;
@@ -318,6 +323,38 @@ class ListenService {
         null,
         'Error updating Google Search setting:'
     );
+
+    /**
+     * Create an activity record for listen sessions
+     * @private
+     */
+    async _createListenActivity(action) {
+        try {
+            // Import activity service lazily to avoid circular dependency
+            const activityService = require('../activity/activityService');
+            
+            const now = new Date();
+            const activityData = {
+                title: `Listen Session ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+                category: 'communication',
+                start_time: now.toISOString(),
+                end_time: action === 'stopped' ? now.toISOString() : null,
+                duration_ms: action === 'stopped' ? 0 : null, // Will be calculated when session ends
+                status: action === 'started' ? 'active' : 'completed',
+                metadata: {
+                    session_id: this.currentSessionId,
+                    session_type: 'listen',
+                    action: action,
+                    auto_generated: true
+                }
+            };
+            
+            await activityService.createActivity(activityData);
+            console.log(`[ListenService] Created activity record for listen session ${action}`);
+        } catch (error) {
+            console.error('[ListenService] Failed to create activity record:', error);
+        }
+    }
 }
 
 const listenService = new ListenService();

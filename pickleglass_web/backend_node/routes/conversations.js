@@ -4,7 +4,40 @@ const { ipcRequest } = require('../ipcBridge');
 
 router.get('/', async (req, res) => {
     try {
-        const sessions = await ipcRequest(req, 'get-sessions');
+        const { timeRange, limit, offset } = req.query;
+        
+        // Pass filtering parameters to IPC
+        const params = {
+            timeRange: timeRange || null,
+            limit: limit ? parseInt(limit) : null,
+            offset: offset ? parseInt(offset) : null
+        };
+        
+        const sessions = await ipcRequest(req, 'get-sessions', params);
+        
+        // If backend doesn't support filtering yet, do it client-side as fallback
+        if (timeRange && Array.isArray(sessions)) {
+            const now = Date.now();
+            const timeRangeMs = {
+                week: 7 * 24 * 60 * 60 * 1000,
+                month: 30 * 24 * 60 * 60 * 1000,
+                quarter: 90 * 24 * 60 * 60 * 1000
+            };
+            
+            if (timeRangeMs[timeRange]) {
+                const cutoffTime = now - timeRangeMs[timeRange];
+                const filtered = sessions.filter(session => 
+                    session.started_at * 1000 >= cutoffTime
+                );
+                
+                // Apply limit and offset
+                const start = offset ? parseInt(offset) : 0;
+                const end = limit ? start + parseInt(limit) : filtered.length;
+                
+                return res.json(filtered.slice(start, end));
+            }
+        }
+        
         res.json(sessions);
     } catch (error) {
         console.error('Failed to get sessions via IPC:', error);

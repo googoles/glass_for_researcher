@@ -7,6 +7,7 @@ import {
   UserProfile,
   apiCall
 } from '@/utils/api'
+import { getEnvironmentFeatures, isActivityTrackingAvailable } from '@/utils/environment'
 import ZoteroConnector from '@/components/ZoteroConnector'
 import { 
   Calendar, 
@@ -207,6 +208,7 @@ export default function ResearchPage() {
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now())
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [researchProjects, setResearchProjects] = useState<ResearchProject[]>([])
+  const [environmentFeatures, setEnvironmentFeatures] = useState(getEnvironmentFeatures())
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPaper, setSelectedPaper] = useState<ZoteroItem | null>(null)
   const [showZoteroPanel, setShowZoteroPanel] = useState(false)
@@ -255,6 +257,19 @@ export default function ResearchPage() {
   }
 
   const fetchTrackingStatus = useCallback(async () => {
+    // Only fetch tracking status in environments that support it
+    if (!environmentFeatures.activityTracking) {
+      setTrackingStatus({
+        isTracking: false,
+        currentProject: null,
+        lastAnalysis: null,
+        captureInterval: 300000, // 5 minutes
+        nextCaptureIn: null,
+        zoteroConnected: false
+      })
+      return
+    }
+    
     try {
       const response = await apiCall('/api/research/status')
       if (response.ok) {
@@ -264,9 +279,14 @@ export default function ResearchPage() {
     } catch (error) {
       console.error('Failed to fetch tracking status:', error)
     }
-  }, [])
+  }, [environmentFeatures.activityTracking])
 
   const fetchProductivityScore = useCallback(async () => {
+    // Only fetch productivity score in environments that support it
+    if (!environmentFeatures.activityTracking) {
+      return
+    }
+    
     try {
       const response = await apiCall('/api/research/analysis/current-score')
       if (response.ok) {
@@ -276,7 +296,7 @@ export default function ResearchPage() {
     } catch (error) {
       console.error('Failed to fetch productivity score:', error)
     }
-  }, [])
+  }, [environmentFeatures.activityTracking])
 
   const fetchInsights = useCallback(async () => {
     try {
@@ -292,168 +312,43 @@ export default function ResearchPage() {
 
   const fetchResearchProjects = useCallback(async () => {
     try {
-      // Enhanced mock data with realistic research projects
-      const mockProjects: ResearchProject[] = [
-        {
-          id: '1',
-          title: 'AI Ethics in Healthcare',
-          category: 'academic',
-          description: 'Investigating ethical implications of AI in medical diagnosis and patient privacy',
-          startDate: '2024-01-15',
-          lastActive: '2024-08-02',
-          status: 'active',
-          progress: 72,
-          papersCount: 28,
-          notesCount: 54,
-          collaborators: 3,
-          tags: ['AI', 'Ethics', 'Healthcare', 'Machine Learning', 'Privacy'],
-          priority: 'high',
-          timeSpent: 2340, // 39 hours
-          estimatedCompletion: '2024-09-15',
-          goals: ['Review 50 papers on AI ethics', 'Interview 10 healthcare professionals', 'Draft policy recommendations'],
-          lastActivity: {
-            type: 'analysis',
-            description: 'Analyzed patient consent frameworks in AI systems',
-            timestamp: '2024-08-02T14:30:00Z'
-          }
-        },
-        {
-          id: '2',
-          title: 'Quantum Computing Applications',
-          category: 'technical',
-          description: 'Exploring quantum algorithms for optimization problems in logistics',
-          startDate: '2024-02-01',
-          lastActive: '2024-08-01',
-          status: 'active',
-          progress: 45,
-          papersCount: 19,
-          notesCount: 32,
-          collaborators: 2,
-          tags: ['Quantum Computing', 'Algorithms', 'Optimization', 'Logistics'],
-          priority: 'medium',
-          timeSpent: 1680, // 28 hours
-          estimatedCompletion: '2024-10-30',
-          goals: ['Implement 3 quantum algorithms', 'Benchmark against classical methods', 'Publish findings'],
-          lastActivity: {
-            type: 'paper_added',
-            description: 'Added IBM quantum computing paper to collection',
-            timestamp: '2024-08-01T16:15:00Z'
-          }
-        },
-        {
-          id: '3',
-          title: 'Sustainable Energy Markets',
-          category: 'market',
-          description: 'Market analysis of renewable energy adoption in emerging economies',
-          startDate: '2024-01-20',
-          lastActive: '2024-07-30',
-          status: 'paused',
-          progress: 85,
-          papersCount: 45,
-          notesCount: 78,
-          collaborators: 4,
-          tags: ['Renewable Energy', 'Market Analysis', 'Economics', 'Policy'],
-          priority: 'low',
-          timeSpent: 3240, // 54 hours
-          estimatedCompletion: '2024-08-15',
-          goals: ['Complete regional market analysis', 'Model policy impacts', 'Draft executive summary'],
-          lastActivity: {
-            type: 'milestone',
-            description: 'Completed Southeast Asia market segment analysis',
-            timestamp: '2024-07-30T11:20:00Z'
-          }
-        },
-        {
-          id: '4',
-          title: 'Neural Architecture Search',
-          category: 'technical',
-          description: 'Automated design of neural networks for computer vision tasks',
-          startDate: '2024-06-01',
-          lastActive: '2024-08-03',
-          status: 'active',
-          progress: 30,
-          papersCount: 15,
-          notesCount: 23,
-          collaborators: 1,
-          tags: ['Neural Networks', 'AutoML', 'Computer Vision', 'Architecture'],
-          priority: 'high',
-          timeSpent: 840, // 14 hours
-          estimatedCompletion: '2024-11-01',
-          goals: ['Implement NAS framework', 'Test on 5 vision datasets', 'Compare with manual designs'],
-          lastActivity: {
-            type: 'note',
-            description: 'Added notes on evolutionary search strategies',
-            timestamp: '2024-08-03T09:45:00Z'
-          }
-        },
-        {
-          id: '5',
-          title: 'Digital Therapeutics Regulation',
-          category: 'academic',
-          description: 'Comparative study of regulatory frameworks for digital health interventions',
-          startDate: '2023-11-10',
-          lastActive: '2024-05-20',
-          status: 'completed',
-          progress: 100,
-          papersCount: 67,
-          notesCount: 112,
-          collaborators: 6,
-          tags: ['Digital Health', 'Regulation', 'Policy', 'Healthcare', 'Law'],
-          priority: 'medium',
-          timeSpent: 4320, // 72 hours
-          goals: ['Review FDA guidance', 'Compare international frameworks', 'Publish white paper'],
-          lastActivity: {
-            type: 'milestone',
-            description: 'Published final report and recommendations',
-            timestamp: '2024-05-20T15:30:00Z'
-          }
-        }
-      ]
-      setResearchProjects(mockProjects)
+      // Fetch real projects from API instead of using mock data
+      const response = await apiCall('/api/research/projects')
+      if (response.ok) {
+        const data = await response.json()
+        const projects = data.data || data || []
+        setResearchProjects(Array.isArray(projects) ? projects : [])
+      } else {
+        setResearchProjects([])
+      }
     } catch (error) {
       console.error('Failed to fetch research projects:', error)
+      setResearchProjects([])
     }
   }, [])
 
   const fetchAnalyticsData = useCallback(async () => {
     try {
-      // Mock analytics data
-      const mockAnalytics: AnalyticsData = {
-        weeklyTrend: [
-          { date: '2024-07-28', productivity: 7.2, focus: 8.1 },
-          { date: '2024-07-29', productivity: 8.4, focus: 7.8 },
-          { date: '2024-07-30', productivity: 6.9, focus: 7.2 },
-          { date: '2024-07-31', productivity: 8.8, focus: 9.1 },
-          { date: '2024-08-01', productivity: 7.6, focus: 8.3 },
-          { date: '2024-08-02', productivity: 9.2, focus: 8.9 },
-          { date: '2024-08-03', productivity: 8.1, focus: 7.7 }
-        ],
-        categoryDistribution: [
-          { category: 'Academic', value: 40, color: '#3B82F6' },
-          { category: 'Technical', value: 35, color: '#8B5CF6' },
-          { category: 'Market', value: 20, color: '#10B981' },
-          { category: 'Other', value: 5, color: '#6B7280' }
-        ],
-        focusHeatmap: Array.from({ length: 24 }, (_, hour) => 
-          Array.from({ length: 7 }, (_, day) => ({
-            hour,
-            day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][day],
-            intensity: Math.random() * 10
-          }))
-        ).flat(),
-        productivityTrend: 'improving',
-        avgSessionLength: 127, // minutes
-        peakProductivityHour: 14, // 2 PM
-        totalResearchTime: 12420, // minutes
-        streakDays: 12
+      // Fetch real analytics from API instead of using mock data
+      const response = await apiCall('/api/research/analytics')
+      if (response.ok) {
+        const data = await response.json()
+        setAnalyticsData(data.data || null)
+      } else {
+        setAnalyticsData(null)
       }
-      setAnalyticsData(mockAnalytics)
     } catch (error) {
       console.error('Failed to fetch analytics data:', error)
+      setAnalyticsData(null)
     }
   }, [])
 
   const startTracking = async () => {
+    if (!environmentFeatures.activityTracking) {
+      alert('Activity tracking is only available in the desktop app. Please download and use the Pickle Glass desktop application.')
+      return
+    }
+    
     setIsLoadingTracking(true)
     try {
       const response = await apiCall('/api/research/start', { method: 'POST' })
@@ -462,12 +357,18 @@ export default function ResearchPage() {
       }
     } catch (error) {
       console.error('Failed to start tracking:', error)
+      alert('Failed to start tracking. Please ensure the desktop app is running.')
     } finally {
       setIsLoadingTracking(false)
     }
   }
 
   const stopTracking = async () => {
+    if (!environmentFeatures.activityTracking) {
+      alert('Activity tracking is only available in the desktop app.')
+      return
+    }
+    
     setIsLoadingTracking(true)
     try {
       const response = await apiCall('/api/research/stop', { method: 'POST' })
@@ -476,6 +377,7 @@ export default function ResearchPage() {
       }
     } catch (error) {
       console.error('Failed to stop tracking:', error)
+      alert('Failed to stop tracking. Please ensure the desktop app is running.')
     } finally {
       setIsLoadingTracking(false)
     }
@@ -555,6 +457,8 @@ export default function ResearchPage() {
     if (userInfo) {
       refreshData()
     }
+    // Update environment features
+    setEnvironmentFeatures(getEnvironmentFeatures())
   }, [userInfo, refreshData])
 
   // Auto-refresh data every 30 seconds when tracking is active
@@ -568,21 +472,16 @@ export default function ResearchPage() {
   // Calculate research metrics
   const calculateMetrics = (): ResearchMetrics => {
     const totalProjects = researchProjects.length
-    const totalTime = researchProjects.reduce((acc, project) => {
-      const daysSinceStart = Math.floor(
-        (new Date().getTime() - new Date(project.startDate).getTime()) / (1000 * 60 * 60 * 24)
-      )
-      return acc + daysSinceStart * 2 * 60 * 60 * 1000 // Estimate 2 hours per day
-    }, 0)
-    const avgSessionLength = totalProjects > 0 ? totalTime / totalProjects : 0
+    const totalTime = 0 // Remove time calculations
+    const avgSessionLength = 0
 
-    const categoryCounts = researchProjects.reduce((acc, project) => {
+    const categoryCounts = (Array.isArray(researchProjects) ? researchProjects : []).reduce((acc, project) => {
       acc[project.category] = (acc[project.category] || 0) + 1
       return acc
     }, {} as Record<CategoryKey, number>)
 
-    const pdfsTracked = researchProjects.reduce((sum, p) => sum + p.papersCount, 0)
-    const papersAnalyzed = Math.floor(pdfsTracked * 0.7) // Estimate 70% analyzed
+    const pdfsTracked = 0 // Remove PDF tracking
+    const papersAnalyzed = 0 // Remove paper analysis count
 
     return { totalProjects, totalTime, avgSessionLength, categoryCounts, pdfsTracked, papersAnalyzed }
   }
@@ -590,7 +489,7 @@ export default function ResearchPage() {
   const metrics = calculateMetrics()
   
   // Filter projects based on selected category and search
-  const filteredProjects = researchProjects.filter(project => {
+  const filteredProjects = (Array.isArray(researchProjects) ? researchProjects : []).filter(project => {
     const matchesCategory = selectedCategory === 'all' || project.category === selectedCategory
     const matchesSearch = searchQuery === '' || 
       project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -635,7 +534,7 @@ export default function ResearchPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Research Intelligence Hub</h2>
-              <p className="text-sm text-gray-600">AI-powered research tracking and analysis with Zotero integration</p>
+              <p className="text-sm text-gray-600">Organize and manage your research projects with AI assistance</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -663,27 +562,48 @@ export default function ResearchPage() {
               <BookOpen className="h-4 w-4 text-gray-600" />
             </div>
             <div className="space-y-3">
-              <button
-                onClick={trackingStatus?.isTracking ? stopTracking : startTracking}
-                disabled={isLoadingTracking}
-                className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  trackingStatus?.isTracking
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {isLoadingTracking ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : trackingStatus?.isTracking ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                <span>
-                  {isLoadingTracking ? 'Processing...' : 
-                   trackingStatus?.isTracking ? 'Stop Research' : 'Start Research'}
-                </span>
-              </button>
+              {environmentFeatures.activityTracking ? (
+                <button
+                  onClick={trackingStatus?.isTracking ? stopTracking : startTracking}
+                  disabled={isLoadingTracking}
+                  className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    trackingStatus?.isTracking
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                      : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {isLoadingTracking ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : trackingStatus?.isTracking ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  <span>
+                    {isLoadingTracking ? 'Processing...' : 
+                     trackingStatus?.isTracking ? 'Stop Research' : 'Start Research'}
+                  </span>
+                </button>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 mb-3">
+                    <div className="flex items-center space-x-2 text-amber-700">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Desktop App Required</span>
+                    </div>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Activity tracking is only available in the Pickle Glass desktop application.
+                    </p>
+                  </div>
+                  <a 
+                    href="/download" 
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download Desktop App</span>
+                  </a>
+                </div>
+              )}
               
             </div>
             
@@ -771,16 +691,6 @@ export default function ResearchPage() {
                 </span>
               </div>
               
-              <div className="text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>PDFs Tracked:</span>
-                  <span className="font-medium">{metrics.pdfsTracked}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Papers Analyzed:</span>
-                  <span className="font-medium">{metrics.papersAnalyzed}</span>
-                </div>
-              </div>
               
               {!trackingStatus?.zoteroConnected && (
                 <button 
@@ -795,56 +705,6 @@ export default function ResearchPage() {
         </div>
       </div>
 
-      {/* Research Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Active Projects</p>
-              <p className="text-2xl font-semibold text-gray-900">{metrics.totalProjects}</p>
-            </div>
-            <div className="p-3 bg-indigo-50 rounded-lg">
-              <FileText className="h-6 w-6 text-indigo-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Research Time</p>
-              <p className="text-2xl font-semibold text-gray-900">{formatDuration(metrics.totalTime)}</p>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <Clock className="h-6 w-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Papers Tracked</p>
-              <p className="text-2xl font-semibold text-gray-900">{metrics.pdfsTracked}</p>
-            </div>
-            <div className="p-3 bg-purple-50 rounded-lg">
-              <BookOpen className="h-6 w-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Data Security</p>
-              <p className="text-sm font-medium text-green-600">Encrypted</p>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <Shield className="h-6 w-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Research Categories */}
       <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
@@ -852,7 +712,6 @@ export default function ResearchPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           {Object.entries(RESEARCH_CATEGORIES).map(([key, category]) => {
             const count = metrics.categoryCounts[key as CategoryKey] || 0
-            const percentage = metrics.totalProjects > 0 ? (count / metrics.totalProjects * 100).toFixed(1) : '0'
             const IconComponent = category.icon
             
             return (
@@ -861,7 +720,6 @@ export default function ResearchPage() {
                 <IconComponent className={`h-6 w-6 ${category.textColor} mx-auto mb-2`} />
                 <p className="text-sm font-medium text-gray-900">{count}</p>
                 <p className="text-xs text-gray-600">{category.label}</p>
-                <p className="text-xs text-gray-500">{percentage}%</p>
               </div>
             )
           })}
@@ -931,14 +789,6 @@ export default function ResearchPage() {
                           <p className="text-sm text-gray-600 mb-3">{project.description}</p>
                           
                           <div className="flex items-center space-x-4 text-xs text-gray-500 mb-3">
-                            <span className="flex items-center space-x-1">
-                              <FileText className="h-3 w-3" />
-                              <span>{project.papersCount} papers</span>
-                            </span>
-                            <span className="flex items-center space-x-1">
-                              <Users className="h-3 w-3" />
-                              <span>{project.collaborators} collaborators</span>
-                            </span>
                             <span>Started {new Date(project.startDate).toLocaleDateString()}</span>
                             <span>Active {new Date(project.lastActive).toLocaleDateString()}</span>
                           </div>
@@ -954,7 +804,7 @@ export default function ResearchPage() {
                           </div>
                           
                           <div className="flex flex-wrap gap-2">
-                            {project.tags.map((tag, index) => (
+                            {Array.isArray(project.tags) && project.tags.map((tag, index) => (
                               <span key={index} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
                                 {tag}
                               </span>
@@ -1191,6 +1041,54 @@ export default function ResearchPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-8 py-12">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
+                  <Microscope className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">
+                    {getGreeting()}, {userInfo?.display_name?.split(' ')[0] || 'Researcher'}
+                  </h1>
+                  <p className="text-gray-600 text-lg">Organize and manage your research projects efficiently</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Quick Actions */}
+            <div className="flex items-center space-x-3">
+              <Link 
+                href="/research/ai-dashboard"
+                className="flex items-center space-x-2 px-4 py-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200"
+              >
+                <Brain className="h-4 w-4" />
+                <span>AI Dashboard</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+              
+              <button
+                onClick={() => setShowZoteroPanel(true)}
+                className="flex items-center space-x-2 px-4 py-2 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200"
+              >
+                <Database className="h-4 w-4" />
+                <span>Zotero</span>
+              </button>
+              
+              <button
+                onClick={() => setShowProjectForm(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <Plus className="h-4 w-4" />
+                <span>New Project</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
         {renderDashboard()}
       </div>
 
@@ -1236,7 +1134,7 @@ export default function ResearchPage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-3">Research Goals</h3>
                       <div className="space-y-2">
-                        {selectedProject.goals.map((goal, index) => (
+                        {Array.isArray(selectedProject.goals) && selectedProject.goals.map((goal, index) => (
                           <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
                             <Target className="h-5 w-5 text-indigo-600 mt-0.5" />
                             <span className="text-gray-700">{goal}</span>
@@ -1277,29 +1175,13 @@ export default function ResearchPage() {
                           style={{ width: `${selectedProject.progress}%` }}
                         />
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Time Spent</span>
-                        <span className="font-medium">{formatDuration(selectedProject.timeSpent)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Papers</span>
-                        <span className="font-medium">{selectedProject.papersCount}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Notes</span>
-                        <span className="font-medium">{selectedProject.notesCount}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Team Size</span>
-                        <span className="font-medium">{selectedProject.collaborators}</span>
-                      </div>
                     </div>
                   </div>
                   
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-3">Tags</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedProject.tags.map((tag, index) => (
+                      {Array.isArray(selectedProject.tags) && selectedProject.tags.map((tag, index) => (
                         <span key={index} className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-full text-sm">
                           {tag}
                         </span>
@@ -1378,62 +1260,6 @@ export default function ResearchPage() {
           </div>
         </div>
       )}
-    </div>
-  )
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-8 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
-                  <Microscope className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    {getGreeting()}, {userInfo?.display_name?.split(' ')[0] || 'Researcher'}
-                  </h1>
-                  <p className="text-gray-600 text-lg">Transform your research with AI-powered insights</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Quick Actions */}
-            <div className="flex items-center space-x-3">
-              <Link 
-                href="/research/ai-dashboard"
-                className="flex items-center space-x-2 px-4 py-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200"
-              >
-                <Brain className="h-4 w-4" />
-                <span>AI Dashboard</span>
-                <ExternalLink className="h-3 w-3" />
-              </Link>
-              
-              <button
-                onClick={() => setShowZoteroPanel(true)}
-                className="flex items-center space-x-2 px-4 py-2 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200"
-              >
-                <Database className="h-4 w-4" />
-                <span>Zotero</span>
-              </button>
-              
-              <button
-                onClick={() => setShowProjectForm(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                <Plus className="h-4 w-4" />
-                <span>New Project</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        {renderDashboard()}
-      </div>
     </div>
   )
 }

@@ -243,6 +243,9 @@ class AskService {
             await askRepository.addAiMessage({ sessionId, role: 'user', content: userPrompt.trim() });
             console.log(`[AskService] DB: Saved user prompt to session ${sessionId}`);
             
+            // Create activity record for this Ask query
+            await this._createAskActivity(userPrompt, sessionId);
+            
             const modelInfo = await modelStateService.getCurrentModelInfo('llm');
             if (!modelInfo || !modelInfo.apiKey) {
                 throw new Error('AI model or API key not configured.');
@@ -464,6 +467,39 @@ class AskService {
             }
         } catch (error) {
             console.error('[AskService] Failed to create activity from capture:', error);
+            // Don't throw - this is a non-critical feature
+        }
+    }
+
+    /**
+     * Create activity record for Ask queries
+     * @private
+     */
+    async _createAskActivity(userPrompt, sessionId) {
+        try {
+            // Import activity service lazily to avoid circular dependency
+            const activityService = require('../activity/activityService');
+            
+            const now = new Date();
+            const activityData = {
+                title: `Ask Query: ${userPrompt.substring(0, 50)}${userPrompt.length > 50 ? '...' : ''}`,
+                category: 'research',
+                start_time: now.toISOString(),
+                end_time: now.toISOString(),
+                duration_ms: 0, // Single query, no duration
+                status: 'completed',
+                metadata: {
+                    session_id: sessionId,
+                    session_type: 'ask',
+                    user_prompt: userPrompt.substring(0, 200), // Store first 200 chars
+                    auto_generated: true
+                }
+            };
+            
+            await activityService.createActivity(activityData);
+            console.log('[AskService] Created activity record for Ask query');
+        } catch (error) {
+            console.error('[AskService] Failed to create Ask activity record:', error);
             // Don't throw - this is a non-critical feature
         }
     }

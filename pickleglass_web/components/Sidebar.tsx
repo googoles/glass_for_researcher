@@ -283,34 +283,29 @@ const SidebarComponent = ({ isCollapsed, onToggle, onSearchClick }: SidebarProps
             const animationDelay = 0;
 
             const baseButtonClasses = `
-      group flex items-center rounded-[8px] px-[12px] py-[10px] text-[14px] text-[#282828] w-full relative
-      transition-colors duration-${ANIMATION_DURATION.COLOR_TRANSITION} ease-out
-      focus:outline-none
+      flex items-center rounded-lg px-3 py-2 text-sm text-gray-700 w-full
+      transition-colors duration-200 ease-out
+      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
     `;
 
             const getStateClasses = (isActive: boolean) =>
-                isActive ? 'bg-[#f2f2f2] text-[#282828]' : 'text-[#282828] hover:text-[#282828] hover:bg-[#f7f7f7]';
+                isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100';
 
             if (item.action) {
                 return (
                     <li key={item.name}>
                         <button
                             onClick={item.action}
-                            onKeyDown={e => handleKeyDown(e, item.action)}
                             className={`${baseButtonClasses} ${getStateClasses(false)}`}
                             title={isCollapsed ? item.name : undefined}
                             aria-label={item.ariaLabel || item.name}
-                            style={{ willChange: 'background-color, color' }}
                         >
-                            <div className="shrink-0 flex items-center justify-center w-5 h-5">
-                                <IconComponent icon={item.icon} isLucide={item.isLucide} alt={`${item.name} icon`} />
-                            </div>
-
-                            <div className="ml-[12px] overflow-hidden" style={getTextContainerStyle()}>
-                                <span className="block text-left" style={getUniformTextStyle()}>
+                            <IconComponent icon={item.icon} isLucide={item.isLucide} alt={`${item.name} icon`} className="h-4 w-4 shrink-0" />
+                            {!isCollapsed && (
+                                <span className="ml-3 truncate">
                                     {item.name}
                                 </span>
-                            </div>
+                            )}
                         </button>
                     </li>
                 );
@@ -434,26 +429,16 @@ const SidebarComponent = ({ isCollapsed, onToggle, onSearchClick }: SidebarProps
                 <li key={item.name}>
                     <Link
                         href={item.href || '#'}
-                        className={`
-                        group flex items-center rounded-[8px] text-[14px] px-[12px] py-[10px] relative
-            focus:outline-none
-            ${getStateClasses(isActive)}
-            transition-colors duration-${ANIMATION_DURATION.COLOR_TRANSITION} ease-out
-                        ${isCollapsed ? '' : ''}
-                      `}
+                        className={`${baseButtonClasses} ${getStateClasses(isActive)}`}
                         title={isCollapsed ? item.name : undefined}
                         aria-label={item.ariaLabel || item.name}
-                        style={{ willChange: 'background-color, color' }}
                     >
-                        <div className="shrink-0 flex items-center justify-center w-5 h-5">
-                            <IconComponent icon={item.icon} isLucide={item.isLucide} alt={`${item.name} icon`} />
-                        </div>
-
-                        <div className="ml-[12px] overflow-hidden" style={getTextContainerStyle()}>
-                            <span className="block text-left" style={getUniformTextStyle()}>
+                        <IconComponent icon={item.icon} isLucide={item.isLucide} alt={`${item.name} icon`} className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && (
+                            <span className="ml-3 truncate">
                                 {item.name}
                             </span>
-                        </div>
+                        )}
                     </Link>
                 </li>
             );
@@ -486,13 +471,12 @@ const SidebarComponent = ({ isCollapsed, onToggle, onSearchClick }: SidebarProps
 
     return (
         <aside
-            className={`flex h-full flex-col bg-white border-r py-3 px-2 border-[#e5e5e5] relative ${isCollapsed ? 'w-[60px]' : 'w-[220px]'}`}
-            style={sidebarContainerStyle}
+            className={`flex h-full flex-col bg-white border-r border-gray-200 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-56'}`}
             role="navigation"
             aria-label="main navigation"
             aria-expanded={!isCollapsed}
         >
-            <header className={`group relative h-6 flex shrink-0 items-center justify-between`}>
+            <header className={`p-4 flex shrink-0 items-center justify-between border-b border-gray-100`}>
                 {isCollapsed ? (
                     <Link href="https://pickle.com" target="_blank" rel="noopener noreferrer" className="flex items-center">
                         <Image src="/symbol.svg" alt="Logo" width={20} height={20} className="mx-3 shrink-0" />
@@ -532,7 +516,7 @@ const SidebarComponent = ({ isCollapsed, onToggle, onSearchClick }: SidebarProps
                 )}
             </header>
 
-            <nav className="flex flex-1 flex-col pt-8" role="navigation" aria-label="Main menu">
+            <nav className="flex flex-1 flex-col p-4" role="navigation" aria-label="Main menu">
                 <ul role="list" className="flex flex-1 flex-col">
                     <li>
                         <ul role="list" className="">

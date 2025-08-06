@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('api', {
     platform: process.platform
   },
   
+  // Generic invoke method (available globally)
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  
   // Common utilities used across multiple components
   common: {
     // User & Auth
@@ -118,7 +121,7 @@ contextBridge.exposeInMainWorld('api', {
     cancelHideMoreActionsWindow: () => ipcRenderer.send('cancel-hide-more-actions-window'),
     
     // Generic invoke (for dynamic channel names)
-    // invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
     sendListenButtonClick: (listenButtonText) => ipcRenderer.invoke('listen:changeSession', listenButtonText),
     sendAskButtonClick: () => ipcRenderer.invoke('ask:toggleAskButton'),
     sendToggleAllWindowsVisibility: () => ipcRenderer.invoke('shortcut:toggleAllWindowsVisibility'),
@@ -127,7 +130,9 @@ contextBridge.exposeInMainWorld('api', {
     onListenChangeSessionResult: (callback) => ipcRenderer.on('listen:changeSessionResult', callback),
     removeOnListenChangeSessionResult: (callback) => ipcRenderer.removeListener('listen:changeSessionResult', callback),
     onShortcutsUpdated: (callback) => ipcRenderer.on('shortcuts-updated', callback),
-    removeOnShortcutsUpdated: (callback) => ipcRenderer.removeListener('shortcuts-updated', callback)
+    removeOnShortcutsUpdated: (callback) => ipcRenderer.removeListener('shortcuts-updated', callback),
+    onManualCaptureCompleted: (callback) => ipcRenderer.on('activity:manual-capture-completed', callback),
+    removeOnManualCaptureCompleted: (callback) => ipcRenderer.removeListener('activity:manual-capture-completed', callback)
   },
 
   // src/ui/app/PermissionHeader.js

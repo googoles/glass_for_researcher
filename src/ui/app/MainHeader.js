@@ -7,6 +7,7 @@ export class MainHeader extends LitElement {
         listenSessionStatus: { type: String, state: true },
         activityTrackingStatus: { type: Boolean, state: true },
         isCapturing: { type: Boolean, state: true },
+        manualCaptureNotification: { type: Object, state: true },
     };
 
     static styles = css`
@@ -375,6 +376,43 @@ export class MainHeader extends LitElement {
             background: rgba(255, 165, 0, 0.3);
         }
 
+        /* Manual Capture Notification */
+        .notification {
+            position: fixed;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            z-index: 10000;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 300px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .notification.show {
+            top: 20px;
+            opacity: 1;
+        }
+
+        .notification.success {
+            background: rgba(34, 197, 94, 0.9);
+        }
+
+        .notification.error {
+            background: rgba(239, 68, 68, 0.9);
+        }
+
+        .notification.warning {
+            background: rgba(245, 158, 11, 0.9);
+        }
+
         /* ────────────────[ GLASS BYPASS ]─────────────── */
         :host-context(body.has-glass) .header,
         :host-context(body.has-glass) .listen-button,
@@ -447,6 +485,7 @@ export class MainHeader extends LitElement {
         this.listenSessionStatus = 'beforeSession';
         this.activityTrackingStatus = false;
         this.isCapturing = false;
+        this.manualCaptureNotification = null;
         this.animationEndTimer = null;
         this.handleAnimationEnd = this.handleAnimationEnd.bind(this);
         this.handleMouseMove = this.handleMouseMove.bind(this);
@@ -511,6 +550,35 @@ export class MainHeader extends LitElement {
                 this.wasJustDragged = false;
             }, 0);
         }
+    }
+
+    _showCaptureNotification(result) {
+        const { success, summary, error, warning, type } = result;
+        
+        let notificationType = 'success';
+        let message = summary || 'Activity captured';
+        
+        if (!success) {
+            notificationType = 'error';
+            message = error || 'Capture failed';
+        } else if (warning) {
+            notificationType = 'warning';
+            message = warning;
+        }
+        
+        // Set notification state
+        this.manualCaptureNotification = {
+            type: notificationType,
+            message: message,
+            show: true
+        };
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            this.manualCaptureNotification = null;
+        }, 3000);
+        
+        console.log(`[MainHeader] Showing ${notificationType} notification: ${message}`);
     }
 
     toggleVisibility() {
@@ -595,6 +663,15 @@ export class MainHeader extends LitElement {
             this._activityStatusListener = (event, status) => {
                 this.activityTrackingStatus = status.isTracking || false;
             };
+            
+            // Manual capture completion listener
+            this._manualCaptureListener = (event, result) => {
+                console.log('[MainHeader] Manual capture completed:', result);
+                this._showCaptureNotification(result);
+            };
+            if (window.api.mainHeader.onManualCaptureCompleted) {
+                window.api.mainHeader.onManualCaptureCompleted(this._manualCaptureListener);
+            }
             if (window.api.invoke) {
                 // Get initial activity tracking status
                 window.api.invoke('activity:get-tracking-status').then(status => {
@@ -607,6 +684,19 @@ export class MainHeader extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         this.removeEventListener('animationend', this.handleAnimationEnd);
+        
+        // Clean up listeners
+        if (window.api && window.api.mainHeader) {
+            if (this._sessionStateTextListener) {
+                window.api.mainHeader.removeOnListenChangeSessionResult(this._sessionStateTextListener);
+            }
+            if (this._shortcutListener) {
+                window.api.mainHeader.removeOnShortcutsUpdated(this._shortcutListener);
+            }
+            if (this._manualCaptureListener) {
+                window.api.mainHeader.removeOnManualCaptureCompleted(this._manualCaptureListener);
+            }
+        }
         
         if (this.animationEndTimer) {
             clearTimeout(this.animationEndTimer);
@@ -885,6 +975,13 @@ export class MainHeader extends LitElement {
                     </div>
                 </button>
             </div>
+            
+            <!-- Manual Capture Notification -->
+            ${this.manualCaptureNotification ? html`
+                <div class="notification ${this.manualCaptureNotification.type} ${this.manualCaptureNotification.show ? 'show' : ''}">
+                    ${this.manualCaptureNotification.message}
+                </div>
+            ` : ''}
         `;
     }
 }

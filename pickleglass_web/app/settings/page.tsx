@@ -76,8 +76,8 @@ export default function SettingsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="spinner h-8 w-8 mx-auto"></div>
+          <p className="mt-3 text-gray-600 text-sm">Loading...</p>
         </div>
       </div>
     )
@@ -379,86 +379,82 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Display Name</h3>
-              <p className="text-sm text-gray-600 mb-4">Enter your full name or a display name you're comfortable using.</p>
+            <div className="card p-6">
+              <h3 className="font-semibold text-gray-900 mb-1">Display Name</h3>
+              <p className="text-sm text-gray-600 mb-4">Enter your full name or display name</p>
               <div className="max-w-sm">
                  <input
                     type="text"
                     id="display-name"
                     value={displayNameInput}
                     onChange={(e) => setDisplayNameInput(e.target.value)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black"
+                    className="input"
                     maxLength={32}
+                    placeholder="Your display name"
                   />
-                  <p className="text-xs text-gray-500 mt-2">You can use up to 32 characters.</p>
+                  <p className="text-xs text-gray-500 mt-1">Up to 32 characters</p>
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+              <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
                 <button
                     onClick={handleUpdateDisplayName}
                     disabled={isSaving || !displayNameInput || displayNameInput === profile?.display_name}
-                    className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50"
+                    className="btn btn-primary"
                   >
-                    Update
+                    {isSaving ? 'Updating...' : 'Update'}
                   </button>
               </div>
             </div>
 
             {!isFirebaseMode && (
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">API Key</h3>
+              <div className="card p-6">
+                <h3 className="font-semibold text-gray-900 mb-1">API Key</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  If you want to use your own LLM API key, you can add it here. It will be used for all requests made by the local application.
+                  Use your own LLM API key for requests
                 </p>
                 
                 <div className="max-w-sm">
-                  <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-2">
                     API Key
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      id="api-key"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black"
-                      placeholder="Enter new API key or existing API key"
-                    />
-                  </div>
-                  {hasApiKey ? (
-                    <p className="text-xs text-green-600 mt-2">API key is currently set.</p>
-                  ) : (
-                    <p className="text-xs text-gray-500 mt-2">No API key set. Using free system.</p>
-                  )}
+                  <input
+                    type="password"
+                    id="api-key"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    className="input"
+                    placeholder="Enter your API key"
+                  />
+                  <p className={`text-xs mt-1 ${
+                    hasApiKey ? 'text-green-600' : 'text-gray-500'
+                  }`}>
+                    {hasApiKey ? 'API key configured' : 'Using free system'}
+                  </p>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
                    <button
                       onClick={handleSaveApiKey}
                       disabled={isSaving || !apiKeyInput}
-                      className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50"
+                      className="btn btn-primary"
                     >
-                      {isSaving ? 'Saving...' : 'Save'}
+                      {isSaving ? 'Saving...' : 'Save Key'}
                     </button>
                 </div>
               </div>
             )}
 
             {(isFirebaseMode || (!isFirebaseMode && !hasApiKey)) && (
-               <div className="bg-white border border-red-300 rounded-lg p-6">
-                 <h3 className="text-lg font-semibold text-gray-900 mb-1">Delete Account</h3>
-                 <p className="text-sm text-gray-600 mb-4">
-                   {isFirebaseMode 
-                     ? 'Permanently remove your Firebase account and all content. This action cannot be undone, so please proceed carefully.'
-                     : 'Permanently remove your personal account and all content from the Pickle Glass platform. This action cannot be undone, so please proceed carefully.'
-                   }
+               <div className="card p-6 border-red-200 bg-red-50">
+                 <h3 className="font-semibold text-red-900 mb-1">Delete Account</h3>
+                 <p className="text-sm text-red-700 mb-4">
+                   Permanently delete your account and all data. This cannot be undone.
                  </p>
-                 <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                 <div className="mt-6 pt-4 border-t border-red-200 flex justify-end">
                     <button
                         onClick={handleDeleteAccount}
-                        className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        className="btn bg-red-600 text-white border-red-600 hover:bg-red-700"
                     >
-                        Delete
+                        Delete Account
                     </button>
                  </div>
                </div>
@@ -473,28 +469,27 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="bg-stone-50 min-h-screen">
-      <div className="px-8 py-8">
-        <div className="mb-6">
-          <p className="text-xs text-gray-500 mb-1">Settings</p>
-          <h1 className="text-3xl font-bold text-gray-900">Personal Settings</h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Settings</h1>
+          <p className="text-gray-600 text-sm">Manage your account and preferences</p>
         </div>
         
-        <div className="mb-8">
-          <nav className="flex space-x-10">
+        <div className="mb-6">
+          <nav className="flex space-x-8 border-b border-gray-200">
             {tabs.map((tab) => (
-              <a
+              <button
                 key={tab.id}
-                href={tab.href}
                 onClick={tab.id === 'privacy' ? undefined : () => setActiveTab(tab.id)}
-                className={`pb-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                className={`pb-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                   activeTab === tab.id
-                    ? 'border-gray-900 text-gray-900'
+                    ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 {tab.name}
-              </a>
+              </button>
             ))}
           </nav>
         </div>

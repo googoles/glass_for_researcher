@@ -26,7 +26,15 @@
       "Bash(npx electron:*)",
       "Bash(npm install:*)",
       "Bash(grep:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(touch:*)",
+      "Bash(ss:*)",
+      "Bash(chmod:*)",
+      "Bash(npx tsc:*)",
+      "Bash(mv:*)",
+      "Bash(npm run debug-activities:*)",
+      "Bash(npm audit:*)",
+      "Bash(/dev/null)"
     ],
     "deny": []
   }

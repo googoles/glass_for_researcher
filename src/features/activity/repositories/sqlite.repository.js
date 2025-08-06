@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 class ActivitySQLiteRepository {
     async initialize() {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             
             // Create activities table
             await db.exec(`
@@ -56,7 +56,7 @@ class ActivitySQLiteRepository {
 
     async createActivity(activityData) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const id = uuidv4();
             const now = new Date().toISOString();
 
@@ -76,17 +76,17 @@ class ActivitySQLiteRepository {
                 updated_at: now
             };
 
-            await db.run(`
+            await db.prepare(`
                 INSERT INTO activities (
                     id, uid, title, category, start_time, end_time, duration_ms,
                     project_id, project_name, status, metadata, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
+            `).run(
                 activity.id, activity.uid, activity.title, activity.category,
                 activity.start_time, activity.end_time, activity.duration_ms,
                 activity.project_id, activity.project_name, activity.status,
                 activity.metadata, activity.created_at, activity.updated_at
-            ]);
+            );
 
             console.log(`[Activity SQLite Repository] Created activity: ${id}`);
             return activity;
@@ -98,7 +98,7 @@ class ActivitySQLiteRepository {
 
     async updateActivity(activityId, updates) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const now = new Date().toISOString();
 
             const setClauses = [];
@@ -117,11 +117,11 @@ class ActivitySQLiteRepository {
             setClauses.push('updated_at = ?');
             values.push(now, activityId, updates.uid);
 
-            await db.run(`
+            await db.prepare(`
                 UPDATE activities 
                 SET ${setClauses.join(', ')} 
                 WHERE id = ? AND uid = ?
-            `, values);
+            `).run(...values);
 
             console.log(`[Activity SQLite Repository] Updated activity: ${activityId}`);
             return true;
@@ -133,11 +133,11 @@ class ActivitySQLiteRepository {
 
     async getActivityById(activityId, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const row = await db.get(`
+            const db = await sqliteClient.getDb();
+            const row = await db.prepare(`
                 SELECT * FROM activities 
                 WHERE id = ? AND uid = ?
-            `, [activityId, uid]);
+            `).get(activityId, uid);
 
             if (row && row.metadata) {
                 try {
@@ -156,7 +156,7 @@ class ActivitySQLiteRepository {
 
     async getActivitiesByDate(date, projectId, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             let query = `
                 SELECT * FROM activities 
                 WHERE uid = ? 
@@ -171,7 +171,7 @@ class ActivitySQLiteRepository {
 
             query += ' ORDER BY start_time ASC';
 
-            const rows = await db.all(query, params);
+            const rows = await db.prepare(query).all(...params);
             
             return rows.map(row => {
                 if (row.metadata) {
@@ -191,14 +191,14 @@ class ActivitySQLiteRepository {
 
     async getActivitiesBetweenDates(startDate, endDate, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const rows = await db.all(`
+            const db = await sqliteClient.getDb();
+            const rows = await db.prepare(`
                 SELECT * FROM activities 
                 WHERE uid = ? 
                 AND date(start_time) >= date(?)
                 AND date(start_time) <= date(?)
                 ORDER BY start_time ASC
-            `, [uid, startDate, endDate]);
+            `).all(uid, startDate, endDate);
 
             return rows.map(row => {
                 if (row.metadata) {
@@ -218,12 +218,12 @@ class ActivitySQLiteRepository {
 
     async getGoals(uid) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const row = await db.get(`
+            const db = await sqliteClient.getDb();
+            const row = await db.prepare(`
                 SELECT daily_target, weekly_target, monthly_target 
                 FROM activity_goals 
                 WHERE uid = ?
-            `, [uid]);
+            `).get(uid);
 
             if (row) {
                 return {
@@ -242,16 +242,16 @@ class ActivitySQLiteRepository {
 
     async saveGoals(goals, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const now = new Date().toISOString();
 
-            await db.run(`
+            await db.prepare(`
                 INSERT OR REPLACE INTO activity_goals (
                     id, uid, daily_target, weekly_target, monthly_target, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [
+            `).run(
                 uuidv4(), uid, goals.daily, goals.weekly, goals.monthly, now, now
-            ]);
+            );
 
             console.log(`[Activity SQLite Repository] Saved goals for user: ${uid}`);
             return true;
@@ -264,12 +264,12 @@ class ActivitySQLiteRepository {
     // Settings Management
     async getSettings(uid) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const row = await db.get(`
+            const db = await sqliteClient.getDb();
+            const row = await db.prepare(`
                 SELECT capture_interval, enable_ai_analysis, privacy_mode, activity_categories
                 FROM activity_settings 
                 WHERE uid = ?
-            `, [uid]);
+            `).get(uid);
 
             if (row) {
                 return {
@@ -289,21 +289,21 @@ class ActivitySQLiteRepository {
 
     async saveSettings(settings, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const now = new Date().toISOString();
 
-            await db.run(`
+            await db.prepare(`
                 INSERT OR REPLACE INTO activity_settings (
                     id, uid, capture_interval, enable_ai_analysis, privacy_mode, activity_categories, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
+            `).run(
                 uuidv4(), uid, 
                 settings.captureInterval || 900000,
                 settings.enableAIAnalysis ? 1 : 0,
                 settings.privacyMode ? 1 : 0,
                 Array.isArray(settings.activityCategories) ? settings.activityCategories.join(',') : 'Focus,Communication,Research,Break,Creative,Other',
                 now, now
-            ]);
+            );
 
             console.log(`[Activity SQLite Repository] Saved settings for user: ${uid}`);
             return true;
@@ -316,17 +316,17 @@ class ActivitySQLiteRepository {
     // Capture Data Storage
     async storeCaptureData(captureData, uid) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const id = uuidv4();
             const now = new Date().toISOString();
 
-            await db.run(`
+            await db.prepare(`
                 INSERT INTO activity_captures (
                     id, uid, timestamp, screenshot_hash, analysis_category, analysis_confidence,
                     productivity_indicator, distraction_level, primary_application, content_type,
                     metadata, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
+            `).run(
                 id, uid, captureData.timestamp, captureData.screenshot_hash,
                 captureData.analysis_summary?.category || null,
                 captureData.analysis_summary?.confidence || null,
@@ -336,7 +336,7 @@ class ActivitySQLiteRepository {
                 captureData.metadata?.content_type || null,
                 JSON.stringify(captureData.metadata || {}),
                 now
-            ]);
+            );
 
             console.log(`[Activity SQLite Repository] Stored capture data: ${id}`);
             return { id, ...captureData };
@@ -348,13 +348,13 @@ class ActivitySQLiteRepository {
 
     async getCaptureData(uid, limit = 50, offset = 0) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const rows = await db.all(`
+            const db = await sqliteClient.getDb();
+            const rows = await db.prepare(`
                 SELECT * FROM activity_captures 
                 WHERE uid = ?
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
-            `, [uid, limit, offset]);
+            `).all(uid, limit, offset);
 
             return rows.map(row => {
                 if (row.metadata) {
@@ -375,8 +375,8 @@ class ActivitySQLiteRepository {
     // Analytics and Insights
     async getActivityStats(uid, startDate, endDate) {
         try {
-            const db = await sqliteClient.getDatabase();
-            const rows = await db.all(`
+            const db = await sqliteClient.getDb();
+            const rows = await db.prepare(`
                 SELECT 
                     category,
                     COUNT(*) as activity_count,
@@ -387,7 +387,7 @@ class ActivitySQLiteRepository {
                 AND date(start_time) >= date(?)
                 AND date(start_time) <= date(?)
                 GROUP BY category
-            `, [uid, startDate, endDate]);
+            `).all(uid, startDate, endDate);
 
             return rows;
         } catch (error) {
@@ -398,12 +398,12 @@ class ActivitySQLiteRepository {
 
     async getProductivityTrends(uid, days = 7) {
         try {
-            const db = await sqliteClient.getDatabase();
+            const db = await sqliteClient.getDb();
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - days);
 
-            const rows = await db.all(`
+            const rows = await db.prepare(`
                 SELECT 
                     date(timestamp) as capture_date,
                     analysis_category,
@@ -415,7 +415,7 @@ class ActivitySQLiteRepository {
                 AND date(timestamp) <= date(?)
                 GROUP BY date(timestamp), analysis_category, productivity_indicator
                 ORDER BY capture_date DESC
-            `, [uid, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]);
+            `).all(uid, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]);
 
             return rows;
         } catch (error) {

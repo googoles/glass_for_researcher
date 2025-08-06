@@ -4,7 +4,7 @@ const router = express.Router();
 // Get current tracking status
 router.get('/current', async (req, res) => {
     try {
-        const status = await req.bridge.invoke('research:get-status');
+        const status = await req.bridge.invoke('activity:get-tracking-status');
         res.json(status);
     } catch (error) {
         console.error('Error getting activity status:', error);
@@ -15,7 +15,7 @@ router.get('/current', async (req, res) => {
 // Start activity tracking
 router.post('/tracking/start', async (req, res) => {
     try {
-        const result = await req.bridge.invoke('research:start-tracking');
+        const result = await req.bridge.invoke('activity:start-tracking');
         res.json({ success: true, data: result });
     } catch (error) {
         console.error('Error starting activity tracking:', error);
@@ -26,7 +26,7 @@ router.post('/tracking/start', async (req, res) => {
 // Stop activity tracking
 router.post('/tracking/stop', async (req, res) => {
     try {
-        const result = await req.bridge.invoke('research:stop-tracking');
+        const result = await req.bridge.invoke('activity:stop-tracking');
         res.json({ success: true, data: result });
     } catch (error) {
         console.error('Error stopping activity tracking:', error);
@@ -37,7 +37,7 @@ router.post('/tracking/stop', async (req, res) => {
 // Manual capture and analysis
 router.post('/capture', async (req, res) => {
     try {
-        const result = await req.bridge.invoke('research:manual-capture-analyze');
+        const result = await req.bridge.invoke('activity:capture-screenshot');
         res.json(result);
     } catch (error) {
         console.error('Error performing manual capture:', error);
@@ -49,7 +49,7 @@ router.post('/capture', async (req, res) => {
 router.get('/insights', async (req, res) => {
     try {
         const { timeframe = 'week' } = req.query;
-        const insights = await req.bridge.invoke('research:generate-insights', { timeframe });
+        const insights = await req.bridge.invoke('activity:generate-insights', { timeframe });
         res.json(insights);
     } catch (error) {
         console.error('Error generating activity insights:', error);
@@ -61,7 +61,7 @@ router.get('/insights', async (req, res) => {
 router.get('/sessions', async (req, res) => {
     try {
         const { limit = 50, offset = 0, sessionType } = req.query;
-        const sessions = await req.bridge.invoke('research:get-sessions', { 
+        const sessions = await req.bridge.invoke('activity:get-activities', { 
             limit: parseInt(limit), 
             offset: parseInt(offset),
             sessionType 
@@ -77,7 +77,7 @@ router.get('/sessions', async (req, res) => {
 router.get('/sessions/:sessionId', async (req, res) => {
     try {
         const { sessionId } = req.params;
-        const session = await req.bridge.invoke('research:get-session-details', { sessionId });
+        const session = await req.bridge.invoke('activity:get-activity-details', { activityId: sessionId });
         if (!session) {
             return res.status(404).json({ error: 'Session not found' });
         }
@@ -92,7 +92,25 @@ router.get('/sessions/:sessionId', async (req, res) => {
 router.get('/stats/:timeframe', async (req, res) => {
     try {
         const { timeframe } = req.params;
-        const stats = await req.bridge.invoke('research:get-productivity-stats', { timeframe });
+        let stats;
+        
+        if (timeframe === 'week') {
+            const endDate = new Date().toISOString().split('T')[0];
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
+            stats = await req.bridge.invoke('activity:get-weekly-stats', { 
+                startDate: startDate.toISOString().split('T')[0], 
+                endDate 
+            });
+        } else if (timeframe === 'day') {
+            const date = new Date().toISOString().split('T')[0];
+            stats = await req.bridge.invoke('activity:get-productivity-metrics', { date });
+        } else {
+            // Default to current period metrics
+            const date = new Date().toISOString().split('T')[0];
+            stats = await req.bridge.invoke('activity:get-productivity-metrics', { date, period: timeframe });
+        }
+        
         res.json(stats);
     } catch (error) {
         console.error('Error getting productivity stats:', error);
@@ -104,9 +122,8 @@ router.get('/stats/:timeframe', async (req, res) => {
 router.get('/analysis/history', async (req, res) => {
     try {
         const { limit = 100, timeframe = 'week' } = req.query;
-        const history = await req.bridge.invoke('research:get-analysis-history', { 
-            limit: parseInt(limit), 
-            timeframe 
+        const history = await req.bridge.invoke('activity:get-capture-history', { 
+            limit: parseInt(limit)
         });
         res.json(history);
     } catch (error) {
@@ -123,7 +140,11 @@ router.post('/settings/capture-interval', async (req, res) => {
             return res.status(400).json({ error: 'Invalid interval. Must be between 1-60 minutes.' });
         }
         
-        await req.bridge.invoke('research:set-capture-interval', { intervalMinutes });
+        const settings = {
+            captureInterval: intervalMinutes * 60 * 1000 // Convert to milliseconds
+        };
+        
+        await req.bridge.invoke('activity:update-settings', settings);
         res.json({ success: true, intervalMinutes });
     } catch (error) {
         console.error('Error updating capture interval:', error);
@@ -134,8 +155,14 @@ router.post('/settings/capture-interval', async (req, res) => {
 // Get AI status
 router.get('/ai-status', async (req, res) => {
     try {
-        const status = await req.bridge.invoke('research:get-ai-status');
-        res.json(status);
+        const status = await req.bridge.invoke('activity:get-tracking-status');
+        // Extract AI-related status from the tracking status
+        const aiStatus = {
+            aiEnabled: status.settings?.enableAIAnalysis || false,
+            lastAnalysis: status.lastAnalysis,
+            analysisAvailable: !!status.lastAnalysis
+        };
+        res.json(aiStatus);
     } catch (error) {
         console.error('Error getting AI status:', error);
         res.status(500).json({ error: 'Failed to get AI status' });
@@ -145,7 +172,7 @@ router.get('/ai-status', async (req, res) => {
 // Get dashboard data
 router.get('/dashboard', async (req, res) => {
     try {
-        const dashboardData = await req.bridge.invoke('research:get-dashboard-data');
+        const dashboardData = await req.bridge.invoke('activity:get-dashboard-data');
         res.json(dashboardData);
     } catch (error) {
         console.error('Error getting dashboard data:', error);
@@ -157,8 +184,9 @@ router.get('/dashboard', async (req, res) => {
 router.delete('/sessions/:sessionId', async (req, res) => {
     try {
         const { sessionId } = req.params;
-        const result = await req.bridge.invoke('research:delete-session', { sessionId });
-        res.json({ success: true, data: result });
+        // Note: Activity service doesn't have delete functionality yet
+        // This would need to be implemented in the activity service
+        res.status(501).json({ error: 'Delete functionality not yet implemented for activities' });
     } catch (error) {
         console.error('Error deleting session:', error);
         res.status(500).json({ error: 'Failed to delete session' });
@@ -169,7 +197,48 @@ router.delete('/sessions/:sessionId', async (req, res) => {
 router.get('/export', async (req, res) => {
     try {
         const { format = 'json', timeframe = 'month' } = req.query;
-        const exportData = await req.bridge.invoke('research:export-data', { format, timeframe });
+        
+        // Get activities for the specified timeframe
+        const endDate = new Date().toISOString().split('T')[0];
+        const startDate = new Date();
+        
+        if (timeframe === 'week') {
+            startDate.setDate(startDate.getDate() - 7);
+        } else if (timeframe === 'month') {
+            startDate.setMonth(startDate.getMonth() - 1);
+        } else if (timeframe === 'year') {
+            startDate.setFullYear(startDate.getFullYear() - 1);
+        }
+        
+        const activities = await req.bridge.invoke('activity:get-activities', {
+            startDate: startDate.toISOString().split('T')[0],
+            endDate,
+            limit: 1000 // High limit for export
+        });
+        
+        let exportData;
+        if (format === 'csv') {
+            // Convert to CSV format
+            const headers = ['Title', 'Category', 'Start Time', 'End Time', 'Duration (minutes)', 'Status'];
+            const csvRows = [headers.join(',')];
+            
+            activities.activities.forEach(activity => {
+                const duration = activity.duration_ms ? Math.round(activity.duration_ms / 60000) : 0;
+                const row = [
+                    `"${activity.title || ''}"`,
+                    `"${activity.category || ''}"`,
+                    `"${activity.start_time || ''}"`,
+                    `"${activity.end_time || ''}"`,
+                    duration,
+                    `"${activity.status || ''}"`
+                ];
+                csvRows.push(row.join(','));
+            });
+            
+            exportData = csvRows.join('\n');
+        } else {
+            exportData = JSON.stringify(activities, null, 2);
+        }
         
         res.setHeader('Content-Type', format === 'csv' ? 'text/csv' : 'application/json');
         res.setHeader('Content-Disposition', `attachment; filename="activity-export-${Date.now()}.${format}"`);

@@ -114,6 +114,62 @@ const LATEST_SCHEMA = {
             { name: 'uid', type: 'TEXT PRIMARY KEY' },
             { name: 'keychain_completed', type: 'INTEGER DEFAULT 0' }
         ]
+    },
+    activities: {
+        columns: [
+            { name: 'id', type: 'TEXT PRIMARY KEY' },
+            { name: 'uid', type: 'TEXT NOT NULL' },
+            { name: 'title', type: 'TEXT NOT NULL' },
+            { name: 'category', type: 'TEXT NOT NULL DEFAULT \'other\'' },
+            { name: 'start_time', type: 'TEXT NOT NULL' },
+            { name: 'end_time', type: 'TEXT' },
+            { name: 'duration_ms', type: 'INTEGER DEFAULT 0' },
+            { name: 'project_id', type: 'TEXT' },
+            { name: 'project_name', type: 'TEXT' },
+            { name: 'status', type: 'TEXT DEFAULT \'active\'' },
+            { name: 'metadata', type: 'TEXT' },
+            { name: 'created_at', type: 'TEXT NOT NULL' },
+            { name: 'updated_at', type: 'TEXT NOT NULL' }
+        ]
+    },
+    activity_goals: {
+        columns: [
+            { name: 'id', type: 'TEXT PRIMARY KEY' },
+            { name: 'uid', type: 'TEXT NOT NULL UNIQUE' },
+            { name: 'daily_target', type: 'INTEGER DEFAULT 8' },
+            { name: 'weekly_target', type: 'INTEGER DEFAULT 40' },
+            { name: 'monthly_target', type: 'INTEGER DEFAULT 160' },
+            { name: 'created_at', type: 'TEXT NOT NULL' },
+            { name: 'updated_at', type: 'TEXT NOT NULL' }
+        ]
+    },
+    activity_settings: {
+        columns: [
+            { name: 'id', type: 'TEXT PRIMARY KEY' },
+            { name: 'uid', type: 'TEXT NOT NULL' },
+            { name: 'capture_interval', type: 'INTEGER DEFAULT 900000' },
+            { name: 'enable_ai_analysis', type: 'INTEGER DEFAULT 1' },
+            { name: 'privacy_mode', type: 'INTEGER DEFAULT 0' },
+            { name: 'activity_categories', type: 'TEXT' },
+            { name: 'created_at', type: 'TEXT NOT NULL' },
+            { name: 'updated_at', type: 'TEXT NOT NULL' }
+        ]
+    },
+    activity_captures: {
+        columns: [
+            { name: 'id', type: 'TEXT PRIMARY KEY' },
+            { name: 'uid', type: 'TEXT NOT NULL' },
+            { name: 'timestamp', type: 'TEXT NOT NULL' },
+            { name: 'screenshot_hash', type: 'TEXT' },
+            { name: 'analysis_category', type: 'TEXT' },
+            { name: 'analysis_confidence', type: 'REAL' },
+            { name: 'productivity_indicator', type: 'REAL' },
+            { name: 'distraction_level', type: 'INTEGER' },
+            { name: 'primary_application', type: 'TEXT' },
+            { name: 'content_type', type: 'TEXT' },
+            { name: 'metadata', type: 'TEXT' },
+            { name: 'created_at', type: 'TEXT NOT NULL' }
+        ]
     }
 };
 

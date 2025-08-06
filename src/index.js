@@ -531,12 +531,37 @@ function setupWebDataHandlers() {
             return { error: error.message };
         }
     };
+
+    // Handle web-data-request events from the backend
+    eventBridge.on('web-data-request', async (channel, responseChannel, payload) => {
+        try {
+            console.log(`[EventBridge] Web data request: ${channel}`, payload);
+            
+            // Use the existing invoke method to handle the request
+            const result = await eventBridge.invoke(channel, payload);
+            
+            // Send response back with success/data format
+            eventBridge.emit(responseChannel, {
+                success: true,
+                data: result
+            });
+        } catch (error) {
+            console.error(`[EventBridge] Web data request failed for ${channel}:`, error);
+            
+            // Send error response back
+            eventBridge.emit(responseChannel, {
+                success: false,
+                error: error.message
+            });
+        }
+    });
 }
 
 async function handleServiceInvocation(channel, data) {
     // Map web API calls to IPC handlers
     try {
         const activityService = require('./features/activity/activityService');
+        const modelStateService = require('./features/common/services/modelStateService');
         
         switch (channel) {
             case 'research:get-status':
@@ -618,6 +643,33 @@ async function handleServiceInvocation(channel, data) {
                         'insights_generation'
                     ]
                 };
+                
+            case 'activity:get-activities':
+                return await activityService.getActivities(data || {});
+                
+            case 'activity:get-activity-details':
+                return await activityService.getActivityDetails(data?.activityId);
+                
+            case 'activity:get-dashboard-data':
+                return await activityService.getDashboardData();
+                
+            case 'activity:get-productivity-metrics':
+                return await activityService.getProductivityMetrics(data || {});
+                
+            case 'activity:get-weekly-stats':
+                return await activityService.getWeeklyStats(data || {});
+                
+            case 'activity:generate-insights':
+                return await activityService.generateInsights(data?.timeframe || 'week');
+                
+            case 'activity:get-capture-history':
+                return await activityService.getCaptureHistory(data?.limit || 50);
+                
+            case 'activity:capture-screenshot':
+                return await activityService.performManualCapture();
+                
+            case 'activity:update-settings':
+                return await activityService.updateSettings(data || {});
                 
             default:
                 console.warn(`[ServiceInvocation] Unknown channel: ${channel}`);

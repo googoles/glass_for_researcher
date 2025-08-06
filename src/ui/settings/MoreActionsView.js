@@ -237,12 +237,20 @@ export class MoreActionsView extends LitElement {
                     ? await window.api.invoke('activity:stop-tracking')
                     : await window.api.invoke('activity:start-tracking');
                 
-                if (result.success) {
+                if (result && result.success) {
                     this.activityTrackingStatus = !this.activityTrackingStatus;
+                    console.log('Activity tracking toggled:', this.activityTrackingStatus ? 'ON' : 'OFF');
+                } else {
+                    console.error('Failed to toggle activity tracking:', result?.error || 'Unknown error');
+                    alert(`Failed to ${this.activityTrackingStatus ? 'stop' : 'start'} activity tracking: ${result?.error || 'Unknown error'}`);
                 }
+            } else {
+                console.error('Window API not available');
+                alert('Activity tracking is only available in the desktop app.');
             }
         } catch (error) {
             console.error('Failed to toggle activity tracking:', error);
+            alert(`Error: ${error.message}`);
         }
     }
 
@@ -250,32 +258,104 @@ export class MoreActionsView extends LitElement {
         if (this.isCapturing) return;
 
         this.isCapturing = true;
+        this.requestUpdate(); // Update UI to show loading state
+        
         try {
             if (window.api) {
-                const result = await window.api.invoke('activity:capture-screenshot');
-                if (result.success) {
-                    // Optionally show a brief success feedback
+                console.log('Calling activity:capture-and-analyze...');
+                const result = await window.api.invoke('activity:capture-and-analyze');
+                
+                if (result && result.success) {
+                    console.log('Capture and analyze successful:', result);
+                    
+                    // Show success feedback
+                    let message = 'Screen captured and analyzed successfully!';
+                    if (result.summary) {
+                        message += `\n\nAnalysis: ${result.summary}`;
+                    }
+                    if (result.category) {
+                        message += `\nCategory: ${result.category}`;
+                    }
+                    if (result.productivity_score) {
+                        message += `\nProductivity Score: ${result.productivity_score}/10`;
+                    }
+                    
+                    alert(message);
+                    
                     setTimeout(() => {
                         this.isCapturing = false;
+                        this.requestUpdate();
                     }, 1000);
                 } else {
+                    console.error('Capture and analyze failed:', result?.error || 'Unknown error');
                     this.isCapturing = false;
+                    this.requestUpdate();
+                    alert(`Capture failed: ${result?.error || 'Unknown error'}`);
                 }
+            } else {
+                this.isCapturing = false;
+                this.requestUpdate();
+                alert('Screen capture is only available in the desktop app.');
             }
         } catch (error) {
             console.error('Failed to capture and analyze:', error);
             this.isCapturing = false;
+            this.requestUpdate();
+            alert(`Error: ${error.message}`);
         }
     }
 
     async _handleGenerateSummary() {
         try {
             if (window.api) {
-                await window.api.invoke('activity:generate-insights', { timeframe: 'today' });
-                console.log('Summary generated successfully');
+                console.log('Generating insights summary...');
+                const result = await window.api.invoke('activity:generate-insights', { timeframe: 'day' });
+                
+                if (result && (result.insights || result.recommendations || result.productivity_ratio)) {
+                    console.log('Summary generated successfully:', result);
+                    
+                    // Format the summary nicely
+                    let summaryText = 'Daily Activity Summary\n\n';
+                    
+                    if (result.insights && result.insights.length > 0) {
+                        summaryText += 'Key Insights:\n';
+                        result.insights.forEach(insight => {
+                            summaryText += `• ${insight}\n`;
+                        });
+                        summaryText += '\n';
+                    }
+                    
+                    if (result.recommendations && result.recommendations.length > 0) {
+                        summaryText += 'Recommendations:\n';
+                        result.recommendations.forEach(rec => {
+                            summaryText += `• ${rec}\n`;
+                        });
+                        summaryText += '\n';
+                    }
+                    
+                    if (result.productivity_ratio !== undefined) {
+                        summaryText += `Productivity Score: ${result.productivity_ratio}%\n`;
+                    }
+                    
+                    if (result.total_sessions) {
+                        summaryText += `Total Sessions: ${result.total_sessions}\n`;
+                    }
+                    
+                    if (result.total_time) {
+                        summaryText += `Total Time: ${Math.round(result.total_time / 60)} minutes\n`;
+                    }
+                    
+                    alert(summaryText || 'Summary generated successfully!');
+                } else {
+                    console.log('No summary data available');
+                    alert('No activity data available for today.\n\nTip: Enable activity tracking and use the app for a while to generate insights.');
+                }
+            } else {
+                alert('Summary generation is only available in the desktop app.');
             }
         } catch (error) {
             console.error('Failed to generate summary:', error);
+            alert(`Failed to generate summary: ${error.message}`);
         }
     }
 
@@ -349,8 +429,20 @@ export class MoreActionsView extends LitElement {
     }
 
     _handleHideWindow() {
-        if (window.api) {
-            window.api.mainHeader.hideMoreActionsWindow();
+        try {
+            if (window.api && window.api.mainHeader && typeof window.api.mainHeader.hideMoreActionsWindow === 'function') {
+                window.api.mainHeader.hideMoreActionsWindow();
+            } else {
+                console.warn('Hide window function not available');
+                // Fallback: try to hide via window management
+                if (window.api && window.api.invoke) {
+                    window.api.invoke('window:hide-more-actions').catch(err => {
+                        console.warn('Failed to hide window via IPC:', err);
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to hide window:', error);
         }
     }
 }

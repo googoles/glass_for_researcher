@@ -2,6 +2,7 @@ const { globalShortcut, screen } = require('electron');
 const shortcutsRepository = require('./repositories');
 const internalBridge = require('../../bridge/internalBridge');
 const askService = require('../ask/askService');
+const activityService = require('../activity/activityService');
 
 
 class ShortcutsService {
@@ -67,6 +68,7 @@ class ShortcutsService {
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
             manualScreenshot: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S',
+            manualCapture: isMac ? 'Cmd+Shift+C' : 'Ctrl+Shift+C',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -254,6 +256,62 @@ class ShortcutsService {
                     callback = () => {
                         if(mainWindow && !mainWindow.isDestroyed()) {
                              mainWindow.webContents.executeJavaScript('window.captureManualScreenshot && window.captureManualScreenshot();');
+                        }
+                    };
+                    break;
+                case 'manualCapture':
+                    callback = async () => {
+                        console.log('[ShortcutsService] Manual capture and analyze triggered via shortcut');
+                        try {
+                            const result = await activityService.performManualCapture();
+                            if (result && result.success) {
+                                // Send notification to all windows about successful capture
+                                this.windowPool.forEach(win => {
+                                    if (win && !win.isDestroyed()) {
+                                        try {
+                                            win.webContents.send('activity:manual-capture-completed', {
+                                                success: true,
+                                                summary: result.summary,
+                                                timestamp: result.timestamp,
+                                                analysis: result.analysis
+                                            });
+                                        } catch (e) {
+                                            // Ignore errors for destroyed windows
+                                        }
+                                    }
+                                });
+                                console.log(`[ShortcutsService] Manual capture completed: ${result.summary}`);
+                            } else {
+                                console.error('[ShortcutsService] Manual capture failed:', result?.error);
+                                // Send error notification
+                                this.windowPool.forEach(win => {
+                                    if (win && !win.isDestroyed()) {
+                                        try {
+                                            win.webContents.send('activity:manual-capture-completed', {
+                                                success: false,
+                                                error: result?.error || 'Manual capture failed'
+                                            });
+                                        } catch (e) {
+                                            // Ignore errors for destroyed windows
+                                        }
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.error('[ShortcutsService] Manual capture shortcut error:', error);
+                            // Send error notification
+                            this.windowPool.forEach(win => {
+                                if (win && !win.isDestroyed()) {
+                                    try {
+                                        win.webContents.send('activity:manual-capture-completed', {
+                                            success: false,
+                                            error: error.message
+                                        });
+                                    } catch (e) {
+                                        // Ignore errors for destroyed windows
+                                    }
+                                }
+                            });
                         }
                     };
                     break;

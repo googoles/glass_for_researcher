@@ -13,12 +13,12 @@ async function testAIIntegration() {
   console.log('=' .repeat(60));
 
   try {
-    // Test 1: Initialize Analysis Service
-    console.log('1. Testing Analysis Service Initialization...');
+    // Test 1: Initialize Gemini Analysis Service
+    console.log('1. Testing Gemini Analysis Service Initialization...');
     const analysisService = new AnalysisService();
     
     // Mock API initialization (would normally use real API key)
-    console.log('   ✅ Analysis Service created successfully');
+    console.log('   ✅ Gemini Analysis Service created successfully');
 
     // Test 2: Test Pattern Recognizer
     console.log('2. Testing Pattern Recognizer...');

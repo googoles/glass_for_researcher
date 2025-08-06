@@ -1,5 +1,5 @@
 /**
- * Advanced AI Analysis Service for Activity Tracking
+ * Advanced AI Analysis Service for Activity Tracking using Gemini
  * Provides sophisticated analysis of screenshots and activity patterns
  */
 
@@ -38,7 +38,7 @@ class AnalysisService {
   }
 
   /**
-   * Initialize the analysis service with AI provider
+   * Initialize the analysis service with Gemini AI provider
    */
   async initialize(apiKey, provider = 'gemini', model = 'gemini-2.5-flash') {
     try {
@@ -66,7 +66,7 @@ class AnalysisService {
    */
   async analyzeScreenshot(base64Image, context = {}) {
     if (!this.llmClient) {
-      throw new Error('Analysis service not initialized');
+      throw new Error('Gemini analysis service not initialized');
     }
 
     const cacheKey = this.generateCacheKey(base64Image, context);
@@ -186,7 +186,7 @@ class AnalysisService {
    */
   async generateProductivityScore(base64Image, context = {}) {
     if (!this.llmClient) {
-      throw new Error('Analysis service not initialized');
+      throw new Error('Gemini analysis service not initialized');
     }
 
     try {

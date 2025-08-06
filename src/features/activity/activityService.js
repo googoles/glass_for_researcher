@@ -32,9 +32,11 @@ class ActivityService {
     };
     this.settings = {
       captureInterval: 15 * 60 * 1000, // 15 minutes default
-      enableAIAnalysis: true,
+      enableSmartAnalysis: true,
+      enableAutoCapture: true, // Enable/disable automatic captures
       activityCategories: ['Focus', 'Communication', 'Research', 'Break', 'Creative', 'Other'],
-      privacyMode: false // When true, only stores aggregated data
+      privacyMode: false, // When true, only stores aggregated data
+      manualCaptureNotifications: true // Show notifications for manual captures
     };
     this.captureHistory = [];
     this.maxHistorySize = 100; // Keep last 100 captures
@@ -56,7 +58,7 @@ class ActivityService {
         this.settings = { ...this.settings, ...storedSettings };
       }
       
-      console.log('[Activity Service] Activity repository initialized with AI analysis capabilities');
+      console.log('[Activity Service] Activity repository initialized with Gemini AI analysis capabilities');
       return true;
     } catch (error) {
       console.error('[Activity Service] Failed to initialize:', error);
@@ -378,20 +380,20 @@ class ActivityService {
     }
   }
 
-  // AI Analysis with Gemini
+  // Smart Analysis with Gemini
   async analyzeScreenshot(screenshotBase64) {
-    if (!this.settings.enableAIAnalysis) {
+    if (!this.settings.enableSmartAnalysis) {
       return null;
     }
 
     try {
       const modelInfo = await modelStateService.getCurrentModelInfo('llm');
       if (!modelInfo || modelInfo.provider !== 'gemini' || !modelInfo.apiKey) {
-        console.log('[Activity Service] Gemini not configured, skipping AI analysis');
+        console.log('[Activity Service] Gemini not configured, skipping smart analysis');
         return null;
       }
 
-      const geminiLLM = createLLM({
+      const analysisLLM = createLLM({
         apiKey: modelInfo.apiKey,
         model: modelInfo.model || 'gemini-2.5-flash',
         temperature: 0.3,
@@ -435,7 +437,7 @@ Be accurate and honest in your assessment.`;
         }
       ];
 
-      const result = await geminiLLM.generateContent(parts);
+      const result = await analysisLLM.generateContent(parts);
       const responseText = await result.response.text();
       
       // Parse JSON response
@@ -445,14 +447,14 @@ Be accurate and honest in your assessment.`;
         analysis.model_used = modelInfo.model;
         return analysis;
       } catch (parseError) {
-        console.error('[Activity Service] Failed to parse AI analysis JSON:', parseError);
+        console.error('[Activity Service] Failed to parse Gemini AI analysis JSON:', parseError);
         console.error('[Activity Service] Raw response:', responseText);
         
         // Fallback: extract basic info from text response
         return this._parseFallbackAnalysis(responseText);
       }
     } catch (error) {
-      console.error('[Activity Service] AI analysis failed:', error);
+      console.error('[Activity Service] Gemini AI analysis failed:', error);
       return null;
     }
   }
@@ -503,25 +505,35 @@ Be accurate and honest in your assessment.`;
       return { success: true, message: 'Already tracking' };
     }
 
-    console.log(`[Activity Service] Starting activity tracking with ${this.settings.captureInterval / 1000 / 60}min intervals`);
+    console.log(`[Activity Service] Starting activity tracking`);
     this.isTracking = true;
 
-    // Take initial screenshot and analysis
-    await this._performActivityCapture();
+    // Take initial screenshot and analysis if auto capture is enabled
+    if (this.settings.enableAutoCapture) {
+      console.log(`[Activity Service] Auto capture enabled with ${this.settings.captureInterval / 1000 / 60}min intervals`);
+      await this._performActivityCapture();
 
-    // Start periodic captures
-    this.captureInterval = setInterval(async () => {
-      try {
-        await this._performActivityCapture();
-      } catch (error) {
-        console.error('[Activity Service] Periodic capture failed:', error);
-      }
-    }, this.settings.captureInterval);
+      // Start periodic captures only if auto capture is enabled
+      this.captureInterval = setInterval(async () => {
+        try {
+          await this._performActivityCapture();
+        } catch (error) {
+          console.error('[Activity Service] Periodic capture failed:', error);
+        }
+      }, this.settings.captureInterval);
+    } else {
+      console.log('[Activity Service] Auto capture disabled - manual captures only');
+    }
 
     // Broadcast status to renderer processes
     this._broadcastStatus();
 
-    return { success: true, message: 'Activity tracking started' };
+    return { 
+      success: true, 
+      message: this.settings.enableAutoCapture 
+        ? `Activity tracking started with ${this.settings.captureInterval / 1000 / 60}min auto-capture intervals`
+        : 'Activity tracking started (manual capture only)'
+    };
   }
 
   async stopActivityTracking() {
@@ -559,9 +571,9 @@ Be accurate and honest in your assessment.`;
 
       this.lastScreenshot = screenshot;
       
-      // Analyze with AI if enabled
+      // Analyze with Gemini AI analysis if enabled
       let analysis = null;
-      if (this.settings.enableAIAnalysis) {
+      if (this.settings.enableSmartAnalysis) {
         analysis = await this.analyzeScreenshot(screenshot.base64);
         this.lastAnalysis = analysis;
       }
@@ -620,7 +632,7 @@ Be accurate and honest in your assessment.`;
           duration_ms: 0,
           status: 'active',
           metadata: {
-            ai_analysis: analysis,
+            smart_analysis: analysis,
             capture_interval: this.settings.captureInterval,
             productivity_indicator: analysis.details?.productivity_indicator,
             distraction_level: analysis.details?.distraction_level,
@@ -691,7 +703,7 @@ Be accurate and honest in your assessment.`;
           },
           capture_settings: {
             interval: this.settings.captureInterval,
-            ai_enabled: this.settings.enableAIAnalysis
+            analysis_enabled: this.settings.enableSmartAnalysis
           }
         }
       };
@@ -725,11 +737,18 @@ Be accurate and honest in your assessment.`;
   // Settings Management
   async updateSettings(newSettings) {
     try {
+      const oldSettings = { ...this.settings };
       this.settings = { ...this.settings, ...newSettings };
       await activityRepository.saveSettings(this.settings);
       
-      // Restart tracking if interval changed
-      if (this.isTracking && newSettings.captureInterval && newSettings.captureInterval !== this.settings.captureInterval) {
+      // Restart tracking if auto capture settings or interval changed
+      const needsRestart = this.isTracking && (
+        (newSettings.captureInterval && newSettings.captureInterval !== oldSettings.captureInterval) ||
+        (newSettings.enableAutoCapture !== undefined && newSettings.enableAutoCapture !== oldSettings.enableAutoCapture)
+      );
+      
+      if (needsRestart) {
+        console.log('[Activity Service] Settings changed, restarting activity tracking');
         await this.stopActivityTracking();
         await this.startActivityTracking();
       }
@@ -861,17 +880,190 @@ Be accurate and honest in your assessment.`;
 
   // Status and Data Access Methods
   async getTrackingStatus() {
+    const nextCaptureIn = this.isTracking && this.settings.enableAutoCapture && this.captureInterval 
+      ? this.settings.captureInterval 
+      : null;
+      
     return {
       isTracking: this.isTracking,
       currentActivity: this.currentActivity,
       lastAnalysis: this.lastAnalysis,
       settings: this.settings,
-      captureHistory: this.captureHistory.slice(0, 10) // Last 10 captures
+      captureHistory: this.captureHistory.slice(0, 10), // Last 10 captures
+      nextCaptureIn: nextCaptureIn,
+      autoCaptureEnabled: this.settings.enableAutoCapture,
+      manualCaptureAvailable: true
     };
   }
 
   async getCaptureHistory(limit = 50) {
     return this.captureHistory.slice(0, limit);
+  }
+
+  // Get activities list with filtering options
+  async getActivities(options = {}) {
+    try {
+      const { limit = 50, offset = 0, sessionType, startDate, endDate } = options;
+      
+      if (startDate && endDate) {
+        const activities = await activityRepository.getActivitiesBetweenDates(startDate, endDate);
+        return {
+          activities: activities.slice(offset, offset + limit),
+          total: activities.length
+        };
+      } else {
+        // Get recent activities
+        const endDateObj = new Date();
+        const startDateObj = new Date();
+        startDateObj.setDate(startDateObj.getDate() - 30); // Last 30 days
+        
+        const activities = await activityRepository.getActivitiesBetweenDates(
+          startDateObj.toISOString().split('T')[0],
+          endDateObj.toISOString().split('T')[0]
+        );
+        
+        // Filter by sessionType/category if provided
+        const filteredActivities = sessionType 
+          ? activities.filter(activity => activity.category === sessionType.toLowerCase())
+          : activities;
+        
+        return {
+          activities: filteredActivities.slice(offset, offset + limit),
+          total: filteredActivities.length
+        };
+      }
+    } catch (error) {
+      console.error('[Activity Service] Failed to get activities:', error);
+      return { activities: [], total: 0 };
+    }
+  }
+  
+  // Get specific activity details
+  async getActivityDetails(activityId) {
+    try {
+      const activity = await activityRepository.getActivityById(activityId);
+      if (!activity) {
+        return null;
+      }
+      
+      // Enhance with additional computed data
+      const enhancedActivity = {
+        ...activity,
+        duration_formatted: this._formatDuration(activity.duration_ms),
+        productivity_score: this._calculateProductivityScore(activity),
+        category_display: this._formatCategoryDisplay(activity.category)
+      };
+      
+      return enhancedActivity;
+    } catch (error) {
+      console.error('[Activity Service] Failed to get activity details:', error);
+      return null;
+    }
+  }
+  
+  // Get dashboard analytics data
+  async getDashboardData() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      const monthStart = new Date();
+      monthStart.setMonth(monthStart.getMonth() - 1);
+      
+      const [todayTimeline, weeklyStats, goalProgress, recentActivities] = await Promise.all([
+        this.getTimeline({ date: today }),
+        this.getWeeklyStats({ 
+          startDate: weekStart.toISOString().split('T')[0], 
+          endDate: today 
+        }),
+        this.getGoalProgress(),
+        this.getActivities({ limit: 10 })
+      ]);
+      
+      const trackingStatus = await this.getTrackingStatus();
+      
+      return {
+        overview: {
+          totalTimeToday: todayTimeline.totalTime,
+          activeTimeToday: todayTimeline.activeTime,
+          weeklyTotal: weeklyStats.totalHours,
+          monthlyGoalProgress: goalProgress.monthly.percentage
+        },
+        tracking: {
+          isActive: trackingStatus.isTracking,
+          currentActivity: trackingStatus.currentActivity,
+          lastCapture: this.lastScreenshot?.timestamp || null
+        },
+        productivity: {
+          todayScore: (await this.getProductivityMetrics({ date: today })).score,
+          weeklyAverage: weeklyStats.averageScore,
+          trend: this._calculateTrendDirection(weeklyStats.dailyScores)
+        },
+        categories: todayTimeline.categories,
+        recentActivities: recentActivities.activities,
+        goals: goalProgress,
+        insights: await this.generateInsights('week')
+      };
+    } catch (error) {
+      console.error('[Activity Service] Failed to get dashboard data:', error);
+      return {
+        overview: { totalTimeToday: 0, activeTimeToday: 0, weeklyTotal: 0, monthlyGoalProgress: 0 },
+        tracking: { isActive: false, currentActivity: null, lastCapture: null },
+        productivity: { todayScore: 0, weeklyAverage: 0, trend: 'stable' },
+        categories: {},
+        recentActivities: [],
+        goals: { daily: { target: 8, actual: 0, percentage: 0 }, weekly: { target: 40, actual: 0, percentage: 0 }, monthly: { target: 160, actual: 0, percentage: 0 } },
+        insights: null
+      };
+    }
+  }
+  
+  // Helper methods for dashboard data
+  _formatDuration(durationMs) {
+    if (!durationMs) return '0m';
+    const minutes = Math.floor(durationMs / 60000);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${remainingMinutes}m`;
+    }
+    return `${minutes}m`;
+  }
+  
+  _calculateProductivityScore(activity) {
+    if (!activity.metadata?.smart_analysis) return 5;
+    
+    const analysis = activity.metadata.smart_analysis;
+    const productivity = analysis.details?.productivity_indicator;
+    const category = activity.category;
+    
+    if (productivity === 'high' || ['focus', 'creative', 'research'].includes(category)) {
+      return Math.min(10, 7 + (analysis.confidence || 0.5) * 3);
+    } else if (productivity === 'low' || category === 'break') {
+      return Math.max(1, 4 - (analysis.confidence || 0.5) * 3);
+    }
+    return 5;
+  }
+  
+  _formatCategoryDisplay(category) {
+    return category.charAt(0).toUpperCase() + category.slice(1);
+  }
+  
+  _calculateTrendDirection(dailyScores) {
+    if (!dailyScores || dailyScores.length < 2) return 'stable';
+    
+    const recent = dailyScores.slice(-3);
+    const earlier = dailyScores.slice(0, -3);
+    
+    if (recent.length === 0 || earlier.length === 0) return 'stable';
+    
+    const recentAvg = recent.reduce((sum, day) => sum + day.score, 0) / recent.length;
+    const earlierAvg = earlier.reduce((sum, day) => sum + day.score, 0) / earlier.length;
+    
+    if (recentAvg > earlierAvg + 0.5) return 'up';
+    if (recentAvg < earlierAvg - 0.5) return 'down';
+    return 'stable';
   }
 
   // Utility method to create activity entries
@@ -881,6 +1073,99 @@ Be accurate and honest in your assessment.`;
     } catch (error) {
       console.error('[Activity Service] Failed to create activity:', error);
       throw error;
+    }
+  }
+
+  // Public method for manual capture and analyze (used by shortcuts and UI)
+  async performManualCapture() {
+    try {
+      console.log('[Activity Service] Performing manual capture and analysis...');
+      
+      // Capture screenshot
+      const screenshot = await this.captureScreenshot();
+      if (!screenshot.success) {
+        console.error('[Activity Service] Screenshot capture failed:', screenshot.error);
+        return { success: false, error: screenshot.error };
+      }
+
+      this.lastScreenshot = screenshot;
+      
+      // Analyze with AI if enabled
+      if (!this.settings.enableSmartAnalysis) {
+        const summary = 'Screenshot captured (Gemini AI analysis disabled)';
+        console.log(`[Activity Service] Manual capture completed. ${summary}`);
+        return {
+          success: true,
+          timestamp: screenshot.timestamp,
+          analysis: null,
+          summary: summary,
+          type: 'manual_capture_no_analysis'
+        };
+      }
+
+      const analysis = await this.analyzeScreenshot(screenshot.base64);
+      if (!analysis) {
+        const summary = 'Screenshot captured but AI analysis failed';
+        console.log(`[Activity Service] Manual capture completed with warning. ${summary}`);
+        return {
+          success: true,
+          timestamp: screenshot.timestamp,
+          analysis: null,
+          summary: summary,
+          warning: 'Gemini AI analysis failed. Please ensure AI provider is configured with a valid API key.',
+          type: 'manual_capture_analysis_failed'
+        };
+      }
+      
+      this.lastAnalysis = analysis;
+
+      // Store capture in history
+      const captureRecord = {
+        timestamp: screenshot.timestamp,
+        analysis: analysis,
+        screenshot_available: true,
+        manual_capture: true
+      };
+      
+      this.captureHistory.unshift(captureRecord);
+      if (this.captureHistory.length > this.maxHistorySize) {
+        this.captureHistory = this.captureHistory.slice(0, this.maxHistorySize);
+      }
+
+      // Process and store activity if we're tracking
+      if (this.isTracking) {
+        await this._processActivityFromAnalysis(analysis, screenshot.timestamp);
+      }
+
+      // Store detailed capture data if not in privacy mode
+      if (!this.settings.privacyMode) {
+        await this._storeCaptureData(screenshot, analysis);
+      }
+
+      // Generate summary
+      const productivityLevel = analysis.details?.productivity_indicator || 'unknown';
+      const confidence = Math.round((analysis.confidence || 0) * 100);
+      const summary = `${analysis.activity_title} - ${analysis.category} (${productivityLevel} productivity, ${confidence}% confidence)`;
+      
+      console.log(`[Activity Service] Manual capture completed. ${summary}`);
+      
+      // Broadcast status update
+      this._broadcastStatus();
+      
+      return {
+        success: true,
+        timestamp: screenshot.timestamp,
+        analysis: analysis,
+        summary: summary,
+        type: 'manual_capture_success'
+      };
+    } catch (error) {
+      console.error('[Activity Service] Manual capture failed:', error);
+      return { 
+        success: false, 
+        error: error.message,
+        type: 'manual_capture_error'
+      };
     }
   }
 }

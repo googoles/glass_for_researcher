@@ -4,8 +4,8 @@ This directory contains the sophisticated AI analysis system that provides detai
 
 ## Core Components
 
-### 1. Analysis Service (`analysisService.js`)
-The central orchestrator that coordinates all AI analysis operations:
+### 1. Gemini Analysis Service (`analysisService.js`)
+The central orchestrator that coordinates all AI analysis operations using Gemini:
 
 - **Screenshot Analysis**: Processes screenshots using advanced Gemini prompts to identify activity types, productivity levels, and focus quality
 - **Pattern Recognition**: Analyzes sequences of screenshots to identify behavioral patterns and trends

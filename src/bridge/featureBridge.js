@@ -694,6 +694,37 @@ module.exports = {
       }
     });
 
+    // Handler for capture and analyze/summarize functionality
+    ipcMain.handle('activity:capture-and-analyze', async () => {
+      try {
+        console.log('[FeatureBridge] activity:capture-and-analyze called');
+        
+        // Perform a manual capture and analysis using the activity service's internal method
+        // This will handle screenshot, analysis, and storing the data
+        const result = await activityService.performManualCapture();
+        
+        if (!result || !result.success) {
+          return { 
+            success: false, 
+            error: result?.error || 'Failed to capture and analyze activity',
+            type: result?.type || 'unknown_error'
+          };
+        }
+
+        return {
+          success: true,
+          analysis: result.analysis,
+          timestamp: result.timestamp,
+          summary: result.summary || `${result.analysis?.activity_title || 'Activity'} - ${result.analysis?.category || 'Unknown'}`,
+          type: result.type || 'manual_capture',
+          warning: result.warning
+        };
+      } catch (error) {
+        console.error('[FeatureBridge] activity:capture-and-analyze failed', error.message);
+        return { success: false, error: error.message, type: 'capture_error' };
+      }
+    });
+
     ipcMain.handle('activity:generate-insights', async (event, { timeframe }) => {
       try {
         return await activityService.generateInsights(timeframe || 'week');
@@ -709,6 +740,96 @@ module.exports = {
       } catch (error) {
         console.error('[FeatureBridge] activity:get-capture-history failed', error.message);
         return [];
+      }
+    });
+
+    ipcMain.handle('activity:get-activities', async (event, options) => {
+      try {
+        return await activityService.getActivities(options || {});
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-activities failed', error.message);
+        return { activities: [], total: 0 };
+      }
+    });
+
+    ipcMain.handle('activity:get-activity-details', async (event, { activityId }) => {
+      try {
+        return await activityService.getActivityDetails(activityId);
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-activity-details failed', error.message);
+        return null;
+      }
+    });
+
+    ipcMain.handle('activity:get-dashboard-data', async () => {
+      try {
+        return await activityService.getDashboardData();
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-dashboard-data failed', error.message);
+        return {
+          overview: { totalTimeToday: 0, activeTimeToday: 0, weeklyTotal: 0, monthlyGoalProgress: 0 },
+          tracking: { isActive: false, currentActivity: null, lastCapture: null },
+          productivity: { todayScore: 0, weeklyAverage: 0, trend: 'stable' },
+          categories: {},
+          recentActivities: [],
+          goals: { daily: { target: 8, actual: 0, percentage: 0 }, weekly: { target: 40, actual: 0, percentage: 0 }, monthly: { target: 160, actual: 0, percentage: 0 } },
+          insights: null
+        };
+      }
+    });
+
+    // Enhanced activity settings handlers
+    ipcMain.handle('activity:set-auto-capture-enabled', async (event, { enabled }) => {
+      try {
+        await activityService.updateSettings({ enableAutoCapture: enabled });
+        return { success: true };
+      } catch (error) {
+        console.error('[FeatureBridge] activity:set-auto-capture-enabled failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('activity:set-capture-interval', async (event, { intervalMinutes }) => {
+      try {
+        await activityService.updateSettings({ 
+          captureInterval: intervalMinutes * 60 * 1000 
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[FeatureBridge] activity:set-capture-interval failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('activity:set-notifications-enabled', async (event, { enabled }) => {
+      try {
+        await activityService.updateSettings({ manualCaptureNotifications: enabled });
+        return { success: true };
+      } catch (error) {
+        console.error('[FeatureBridge] activity:set-notifications-enabled failed', error.message);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('activity:get-capture-settings', async () => {
+      try {
+        const status = await activityService.getTrackingStatus();
+        return {
+          enableAutoCapture: status.settings.enableAutoCapture,
+          captureInterval: status.settings.captureInterval,
+          captureIntervalMinutes: Math.round(status.settings.captureInterval / (60 * 1000)),
+          manualCaptureNotifications: status.settings.manualCaptureNotifications,
+          enableSmartAnalysis: status.settings.enableSmartAnalysis
+        };
+      } catch (error) {
+        console.error('[FeatureBridge] activity:get-capture-settings failed', error.message);
+        return {
+          enableAutoCapture: true,
+          captureInterval: 15 * 60 * 1000,
+          captureIntervalMinutes: 15,
+          manualCaptureNotifications: true,
+          enableSmartAnalysis: true
+        };
       }
     });
 
