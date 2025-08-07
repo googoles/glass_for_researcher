@@ -797,14 +797,18 @@ export class MainHeader extends LitElement {
         this.isCapturing = true;
         try {
             if (window.api) {
-                const result = await window.api.invoke('activity:capture-screenshot');
-                if (result.success) {
-                    // Optionally show a brief success feedback
+                // Send "Summarize this" command to Ask service
+                const result = await window.api.invoke('ask:sendQuestionFromAsk', 'Summarize what is currently on my screen');
+                
+                if (result && result.success) {
+                    // Show Ask window to display the summary
+                    await window.api.invoke('ask:toggleAskButton');
                     setTimeout(() => {
                         this.isCapturing = false;
                     }, 1000);
                 } else {
                     this.isCapturing = false;
+                    console.error('Failed to capture and summarize:', result?.error);
                 }
             }
         } catch (error) {

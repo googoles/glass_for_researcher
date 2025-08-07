@@ -263,55 +263,21 @@ class ShortcutsService {
                     callback = async () => {
                         console.log('[ShortcutsService] Manual capture and analyze triggered via shortcut');
                         try {
-                            const result = await activityService.performManualCapture();
+                            // Use Ask service to capture and summarize
+                            const result = await askService.sendMessage(
+                                'Summarize what is currently on my screen',
+                                []
+                            );
+                            
                             if (result && result.success) {
-                                // Send notification to all windows about successful capture
-                                this.windowPool.forEach(win => {
-                                    if (win && !win.isDestroyed()) {
-                                        try {
-                                            win.webContents.send('activity:manual-capture-completed', {
-                                                success: true,
-                                                summary: result.summary,
-                                                timestamp: result.timestamp,
-                                                analysis: result.analysis
-                                            });
-                                        } catch (e) {
-                                            // Ignore errors for destroyed windows
-                                        }
-                                    }
-                                });
-                                console.log(`[ShortcutsService] Manual capture completed: ${result.summary}`);
+                                // Toggle Ask window to show the summary
+                                await askService.toggleAskButton();
+                                console.log('[ShortcutsService] Capture and summarize completed');
                             } else {
-                                console.error('[ShortcutsService] Manual capture failed:', result?.error);
-                                // Send error notification
-                                this.windowPool.forEach(win => {
-                                    if (win && !win.isDestroyed()) {
-                                        try {
-                                            win.webContents.send('activity:manual-capture-completed', {
-                                                success: false,
-                                                error: result?.error || 'Manual capture failed'
-                                            });
-                                        } catch (e) {
-                                            // Ignore errors for destroyed windows
-                                        }
-                                    }
-                                });
+                                console.error('[ShortcutsService] Capture and summarize failed:', result?.error);
                             }
                         } catch (error) {
                             console.error('[ShortcutsService] Manual capture shortcut error:', error);
-                            // Send error notification
-                            this.windowPool.forEach(win => {
-                                if (win && !win.isDestroyed()) {
-                                    try {
-                                        win.webContents.send('activity:manual-capture-completed', {
-                                            success: false,
-                                            error: error.message
-                                        });
-                                    } catch (e) {
-                                        // Ignore errors for destroyed windows
-                                    }
-                                }
-                            });
                         }
                     };
                     break;

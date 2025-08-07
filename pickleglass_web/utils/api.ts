@@ -666,4 +666,51 @@ export const logout = async () => {
   localStorage.removeItem('user_info');
   
   window.location.href = '/login';
+};
+
+// Activity-related functions
+export interface Activity {
+  id: string;
+  uid: string;
+  title: string;
+  category: string;
+  start_time: string;
+  end_time?: string;
+  duration_ms: number;
+  project_id?: string;
+  project_name?: string;
+  status: string;
+  metadata?: any;
+  created_at: string;
+  updated_at?: string;
+}
+
+export const getActivities = async (options?: { 
+  limit?: number; 
+  offset?: number; 
+  sessionType?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<{ activities: Activity[], total: number }> => {
+  const queryParams = new URLSearchParams();
+  if (options?.limit) queryParams.append('limit', options.limit.toString());
+  if (options?.offset) queryParams.append('offset', options.offset.toString());
+  if (options?.sessionType) queryParams.append('sessionType', options.sessionType);
+  if (options?.startDate) queryParams.append('startDate', options.startDate);
+  if (options?.endDate) queryParams.append('endDate', options.endDate);
+  
+  const queryString = queryParams.toString();
+  const response = await apiCall(`/api/activity/sessions${queryString ? `?${queryString}` : ''}`, { 
+    method: 'GET' 
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch activities');
+  }
+  
+  const data = await response.json();
+  return {
+    activities: Array.isArray(data.activities) ? data.activities : [],
+    total: data.total || 0
+  };
 }; 

@@ -1132,10 +1132,8 @@ Be accurate and honest in your assessment.`;
         this.captureHistory = this.captureHistory.slice(0, this.maxHistorySize);
       }
 
-      // Process and store activity if we're tracking
-      if (this.isTracking) {
-        await this._processActivityFromAnalysis(analysis, screenshot.timestamp);
-      }
+      // Always process and store activity for manual captures
+      await this._processActivityFromAnalysis(analysis, screenshot.timestamp);
 
       // Store detailed capture data if not in privacy mode
       if (!this.settings.privacyMode) {

@@ -35,7 +35,8 @@
       "Bash(npm run debug-activities:*)",
       "Bash(npm audit:*)",
       "Bash(/dev/null)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }
