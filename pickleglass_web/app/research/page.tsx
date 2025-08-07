@@ -7,7 +7,7 @@ import {
   UserProfile,
   apiCall
 } from '@/utils/api'
-import { getEnvironmentFeatures, isActivityTrackingAvailable } from '@/utils/environment'
+import { getEnvironmentFeatures, isActivityTrackingAvailable, isElectronEnvironmentAsync, debugEnvironmentDetection } from '@/utils/environment'
 import ZoteroConnector from '@/components/ZoteroConnector'
 import { 
   Calendar, 
@@ -209,6 +209,7 @@ export default function ResearchPage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [researchProjects, setResearchProjects] = useState<ResearchProject[]>([])
   const [environmentFeatures, setEnvironmentFeatures] = useState(getEnvironmentFeatures())
+  const [envCheckComplete, setEnvCheckComplete] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPaper, setSelectedPaper] = useState<ZoteroItem | null>(null)
   const [showZoteroPanel, setShowZoteroPanel] = useState(false)
@@ -457,8 +458,48 @@ export default function ResearchPage() {
     if (userInfo) {
       refreshData()
     }
-    // Update environment features
-    setEnvironmentFeatures(getEnvironmentFeatures())
+      // Additional environment check for Electron context
+    const checkEnvironment = async () => {
+      try {
+        // Debug current environment detection
+        debugEnvironmentDetection();
+        
+        // Double-check with async method
+        const isElectronAsync = await isElectronEnvironmentAsync();
+        const currentFeatures = getEnvironmentFeatures();
+        
+        console.log('Research environment check results:', {
+          isElectronAsync,
+          currentFeatures,
+          shouldShowDesktop: isElectronAsync || currentFeatures.isElectron
+        });
+        
+        // If async check shows we're in Electron but current features don't, update
+        if (isElectronAsync && currentFeatures.isWeb) {
+          setEnvironmentFeatures({
+            ...currentFeatures,
+            isElectron: true,
+            isWeb: false,
+            activityTracking: true,
+            screenCapture: true,
+            fileSystem: true,
+            notifications: true,
+            systemIntegration: true,
+            webOnlyFeatures: false
+          });
+        } else {
+          setEnvironmentFeatures(currentFeatures);
+        }
+        
+        setEnvCheckComplete(true);
+      } catch (error) {
+        console.warn('Environment check failed:', error);
+        setEnvironmentFeatures(getEnvironmentFeatures());
+        setEnvCheckComplete(true);
+      }
+    };
+    
+    checkEnvironment();
   }, [userInfo, refreshData])
 
   // Auto-refresh data every 30 seconds when tracking is active
@@ -562,7 +603,12 @@ export default function ResearchPage() {
               <BookOpen className="h-4 w-4 text-gray-600" />
             </div>
             <div className="space-y-3">
-              {environmentFeatures.activityTracking ? (
+              {!envCheckComplete ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
+                  <div className="spinner h-6 w-6 mx-auto"></div>
+                  <p className="text-gray-500 text-sm mt-2">Checking environment...</p>
+                </div>
+              ) : environmentFeatures.activityTracking ? (
                 <button
                   onClick={trackingStatus?.isTracking ? stopTracking : startTracking}
                   disabled={isLoadingTracking}

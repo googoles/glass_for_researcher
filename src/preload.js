@@ -335,3 +335,10 @@ contextBridge.exposeInMainWorld('api', {
     removeOnSessionUpdate: (callback) => ipcRenderer.removeListener('research:session-update', callback)
   }
 });
+
+// Also expose as electronAPI for compatibility with some environment detection
+contextBridge.exposeInMainWorld('electronAPI', {
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  isElectron: true,
+  platform: process.platform
+});

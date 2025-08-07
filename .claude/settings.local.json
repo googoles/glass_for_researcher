@@ -34,7 +34,8 @@
       "Bash(mv:*)",
       "Bash(npm run debug-activities:*)",
       "Bash(npm audit:*)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(npm run:*)"
     ],
     "deny": []
   }

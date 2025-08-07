@@ -10,7 +10,7 @@ import {
   deleteSession
 } from '@/utils/api'
 import { Trash2, Download, AlertCircle } from 'lucide-react'
-import { getEnvironmentFeatures } from '@/utils/environment'
+import { getEnvironmentFeatures, isElectronEnvironmentAsync, debugEnvironmentDetection } from '@/utils/environment'
 
 
 export default function ActivityPage() {
@@ -18,7 +18,8 @@ export default function ActivityPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [environmentFeatures] = useState(getEnvironmentFeatures())
+  const [environmentFeatures, setEnvironmentFeatures] = useState(getEnvironmentFeatures())
+  const [envCheckComplete, setEnvCheckComplete] = useState(false)
 
   const fetchSessions = async () => {
     try {
@@ -36,6 +37,48 @@ export default function ActivityPage() {
 
   useEffect(() => {
     fetchSessions()
+  }, [])
+
+  // Additional environment check for Electron context
+  useEffect(() => {
+    const checkEnvironment = async () => {
+      try {
+        // Debug current environment detection
+        debugEnvironmentDetection();
+        
+        // Double-check with async method
+        const isElectronAsync = await isElectronEnvironmentAsync();
+        const currentFeatures = getEnvironmentFeatures();
+        
+        console.log('Environment check results:', {
+          isElectronAsync,
+          currentFeatures,
+          shouldShowDesktop: isElectronAsync || currentFeatures.isElectron
+        });
+        
+        // If async check shows we're in Electron but current features don't, update
+        if (isElectronAsync && currentFeatures.isWeb) {
+          setEnvironmentFeatures({
+            ...currentFeatures,
+            isElectron: true,
+            isWeb: false,
+            activityTracking: true,
+            screenCapture: true,
+            fileSystem: true,
+            notifications: true,
+            systemIntegration: true,
+            webOnlyFeatures: false
+          });
+        }
+        
+        setEnvCheckComplete(true);
+      } catch (error) {
+        console.warn('Environment check failed:', error);
+        setEnvCheckComplete(true);
+      }
+    };
+    
+    checkEnvironment();
   }, [])
 
 
@@ -127,7 +170,12 @@ export default function ActivityPage() {
             </div>
           ) : (
             <div className="card p-8 text-center">
-              {environmentFeatures.isWeb ? (
+              {!envCheckComplete ? (
+                <div className="space-y-4">
+                  <div className="spinner h-6 w-6 mx-auto"></div>
+                  <p className="text-gray-500 text-sm">Checking environment...</p>
+                </div>
+              ) : environmentFeatures.isWeb ? (
                 <div className="space-y-4">
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <div className="flex items-center justify-center space-x-2 text-amber-700 mb-1">

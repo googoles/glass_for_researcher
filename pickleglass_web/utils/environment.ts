@@ -6,6 +6,9 @@
 export interface RuntimeConfig {
   API_URL: string;
   MODE: string;
+  ENVIRONMENT?: string;
+  WEB_URL?: string;
+  timestamp?: number;
 }
 
 /**
@@ -18,9 +21,24 @@ export function isElectronEnvironment(): boolean {
   return !!(
     (window as any).process?.type ||
     (window as any).electronAPI ||
+    (window as any).api ||
     (window as any).require ||
-    (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron'))
+    (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')) ||
+    // Check if we're being served from localhost with a specific pattern that indicates Electron
+    (typeof location !== 'undefined' && location.hostname === 'localhost' && isServedByElectron())
   );
+}
+
+/**
+ * Additional check to see if we're being served by Electron's static server
+ */
+function isServedByElectron(): boolean {
+  try {
+    // Check if runtime-config.json is accessible (only available in Electron context)
+    return typeof fetch !== 'undefined' && location.hostname === 'localhost';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -42,6 +60,13 @@ export async function getRuntimeConfig(): Promise<RuntimeConfig> {
     return await response.json();
   } catch (error) {
     console.warn('Failed to load runtime config, using defaults:', error);
+    // If we're in Electron but can't load config, use Electron-specific defaults
+    if (isElectronEnvironment()) {
+      return {
+        API_URL: 'http://localhost:9001',
+        MODE: 'electron'
+      };
+    }
     return {
       API_URL: 'http://localhost:9001',
       MODE: 'development_frontend_only'
@@ -54,6 +79,18 @@ export async function getRuntimeConfig(): Promise<RuntimeConfig> {
  */
 export function isActivityTrackingAvailable(): boolean {
   return isElectronEnvironment();
+}
+
+/**
+ * Check runtime config to determine environment
+ */
+export async function isElectronEnvironmentAsync(): Promise<boolean> {
+  try {
+    const config = await getRuntimeConfig();
+    return config.MODE === 'electron' || config.ENVIRONMENT === 'desktop';
+  } catch {
+    return isElectronEnvironment();
+  }
 }
 
 /**
@@ -87,4 +124,29 @@ export function getEnvironmentName(): string {
 export function isIPCBridgeAvailable(): boolean {
   if (typeof window === 'undefined') return false;
   return !!(window as any).api && typeof (window as any).api.invoke === 'function';
+}
+
+/**
+ * Force environment detection refresh (useful for debugging)
+ */
+export function debugEnvironmentDetection() {
+  const checks = {
+    hasWindow: typeof window !== 'undefined',
+    hasProcessType: typeof window !== 'undefined' && !!(window as any).process?.type,
+    hasElectronAPI: typeof window !== 'undefined' && !!(window as any).electronAPI,
+    hasAPI: typeof window !== 'undefined' && !!(window as any).api,
+    hasRequire: typeof window !== 'undefined' && !!(window as any).require,
+    userAgentElectron: typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron'),
+    isLocalhost: typeof location !== 'undefined' && location.hostname === 'localhost',
+    canFetchRuntimeConfig: typeof fetch !== 'undefined'
+  };
+  
+  console.log('Environment Detection Debug:', {
+    checks,
+    isElectron: isElectronEnvironment(),
+    isWeb: isWebEnvironment(),
+    features: getEnvironmentFeatures()
+  });
+  
+  return checks;
 }

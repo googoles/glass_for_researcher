@@ -463,6 +463,8 @@ async function startWebStack() {
   const runtimeConfig = {
     API_URL: `http://localhost:${apiPort}`,
     WEB_URL: `http://localhost:${frontendPort}`,
+    MODE: 'electron',
+    ENVIRONMENT: 'desktop',
     timestamp: Date.now()
   };
   
